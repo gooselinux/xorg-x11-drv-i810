@@ -1,0 +1,74 @@
+--- xf86-video-intel-2.2.1/src/i830_driver.c.misc	2008-09-04 15:15:25.000000000 +1000
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2008-09-04 15:15:25.000000000 +1000
+@@ -3416,6 +3416,8 @@
+       ErrorF("I830PMEvent: Capability change\n");
+       xf86InitialConfiguration(pScrn, 0);
+       xf86SetDesiredModes(pScrn);
++      xf86RandR12SetCurrentMode(pScrn->pScreen, pScrn->currentMode);
++      i830DescribeOutputConfiguration(pScrn);
+       SaveScreens(SCREEN_SAVER_FORCER, ScreenSaverReset);
+       break;
+    default:
+--- xf86-video-intel-2.2.1/src/i830_crt.c.misc	2008-02-21 07:41:25.000000000 +1000
++++ xf86-video-intel-2.2.1/src/i830_crt.c	2008-09-04 15:15:25.000000000 +1000
+@@ -353,11 +353,9 @@
+     Bool		    connected;
+ 
+     crtc = i830GetLoadDetectPipe (output, NULL, &dpms_mode);
+-    if (!crtc)
+-	return XF86OutputStatusUnknown;
+ 
+-    if (IS_I945G(pI830) || IS_I945GM(pI830) || IS_I965G(pI830) ||
+-	    IS_G33CLASS(pI830)) {
++    if (crtc && (IS_I945G(pI830) || IS_I945GM(pI830) || IS_I965G(pI830) ||
++	    IS_G33CLASS(pI830))) {
+ 	if (i830_crt_detect_hotplug(output))
+ 	    status = XF86OutputStatusConnected;
+ 	else
+@@ -371,6 +369,9 @@
+ 	goto out;
+     }
+ 
++    if (!crtc)
++	return XF86OutputStatusUnknown;
++
+     /* Use the load-detect method if we have no other way of telling. */
+     connected = i830_crt_detect_load (crtc, output);
+     if (connected)
+@@ -379,7 +380,8 @@
+ 	status = XF86OutputStatusDisconnected;
+ 
+ out:
+-    i830ReleaseLoadDetectPipe (output, dpms_mode);
++    if (crtc)
++	i830ReleaseLoadDetectPipe (output, dpms_mode);
+ 
+     return status;
+ }
+--- xf86-video-intel-2.2.1/src/i830_display.c.misc	2008-09-04 15:15:25.000000000 +1000
++++ xf86-video-intel-2.2.1/src/i830_display.c	2008-09-04 15:15:25.000000000 +1000
+@@ -1501,7 +1501,6 @@
+     xf86CrtcConfigPtr	    xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
+     I830OutputPrivatePtr    intel_output = output->driver_private;
+     I830CrtcPrivatePtr	    intel_crtc;
+-    xf86CrtcPtr		    supported_crtc =NULL;
+     xf86CrtcPtr		    crtc = NULL;
+     int			    i;
+ 
+@@ -1532,15 +1531,9 @@
+ 	    crtc = possible_crtc;
+ 	    break;
+ 	}
+-	if (!supported_crtc)
+-	    supported_crtc = possible_crtc;
+     }
+     if (!crtc)
+-    {
+-	crtc = supported_crtc;
+-	if (!crtc)
+-	    return NULL;
+-    }
++	return NULL;
+ 
+     output->crtc = crtc;
+     intel_output->load_detect_temp = TRUE;

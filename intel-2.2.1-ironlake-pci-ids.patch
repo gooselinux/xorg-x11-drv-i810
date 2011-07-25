@@ -1,0 +1,154 @@
+From 2d9a1289c5e89df71e1e5f0f573f7b0f43d261b7 Mon Sep 17 00:00:00 2001
+From: Zhenyu Wang <zhenyuw@linux.intel.com>
+Date: Fri, 5 Jun 2009 11:57:57 +0800
+Subject: [PATCH 1/5] Add new chipsets PCI ids
+
+Desktop and mobile version of new chipsets are added.
+Also do memory config like Intel 4 series chipset.
+
+Signed-off-by: Zhenyu Wang <zhenyuw@linux.intel.com>
+---
+ src/common.h      |   23 ++++++++++++++++++-----
+ src/i810_driver.c |    6 ++++++
+ src/i830_driver.c |   14 ++++++++++++--
+ 3 files changed, 36 insertions(+), 7 deletions(-)
+
+diff --git a/src/common.h b/src/common.h
+index 405349a..e44f87d 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -419,6 +419,16 @@ extern int I810_DEBUG;
+ #define PCI_CHIP_G41_G_BRIDGE	0x2E30
+ #endif
+ 
++#ifndef PCI_CHIP_IGDNG_D_G
++#define PCI_CHIP_IGDNG_D_G             0x0042
++#define PCI_CHIP_IGDNG_D_G_BRIDGE      0x0040
++#endif
++
++#ifndef PCI_CHIP_IGDNG_M_G
++#define PCI_CHIP_IGDNG_M_G             0x0046
++#define PCI_CHIP_IGDNG_M_G_BRIDGE      0x0044
++#endif
++
+ #if XSERVER_LIBPCIACCESS
+ #define I810_MEMBASE(p,n) (p)->regions[(n)].base_addr
+ #define VENDOR_ID(p)      (p)->vendor_id
+@@ -453,22 +463,25 @@ extern int I810_DEBUG;
+ #define IS_GM45(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_GM45_GM)
+ #define IS_G4X(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGD_E_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G41_G)
+ #define IS_I965GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME)
+-#define IS_I965G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G35_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_Q || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I946_GZ || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME || IS_GM45(pI810) || IS_G4X(pI810))
++#define IS_IGDNG_D(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGDNG_D_G)
++#define IS_IGDNG_M(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGDNG_M_G)
++#define IS_IGDNG(pI810) (IS_IGDNG_D(pI810) || IS_IGDNG_M(pI810))
++#define IS_I965G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G35_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_Q || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I946_GZ || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME || IS_GM45(pI810) || IS_G4X(pI810) || IS_IGDNG(pI810))
+ #define IS_G33CLASS(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G33_G ||\
+  			    DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q35_G ||\
+  			    DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q33_G)
+ #define IS_I9XX(pI810) (IS_I915G(pI810) || IS_I915GM(pI810) || IS_I945G(pI810) || IS_I945GM(pI810) || IS_I965G(pI810) || IS_G33CLASS(pI810))
+ 
+-#define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810) || IS_I965GM(pI810) || IS_GM45(pI810))
++#define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810) || IS_I965GM(pI810) || IS_GM45(pI810) || IS_IGDNG_M(pI810))
+ /* mark chipsets for using gfx VM offset for overlay */
+ #define OVERLAY_NOPHYSICAL(pI810) (IS_G33CLASS(pI810) || IS_I965G(pI810))
+ /* mark chipsets without overlay hw */
+-#define OVERLAY_NOEXIST(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
++#define OVERLAY_NOEXIST(pI810) (IS_GM45(pI810) || IS_G4X(pI810) || IS_IGDNG(pI810))
+ /* chipsets require graphics mem for hardware status page */
+ #define HWS_NEED_GFX(pI810) (IS_G33CLASS(pI810) || IS_GM45(pI810) || IS_G4X(pI810))
+ /* chipsets require status page in non stolen memory */
+-#define HWS_NEED_NONSTOLEN(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
+-#define SUPPORTS_INTEGRATED_HDMI(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
++#define HWS_NEED_NONSTOLEN(pI810) (IS_GM45(pI810) || IS_G4X(pI810) || IS_IGDNG(pI810))
++#define SUPPORTS_INTEGRATED_HDMI(pI810) (IS_GM45(pI810) || IS_G4X(pI810) || IS_IGDNG(pI810))
+ 
+ #define GTT_PAGE_SIZE			KB(4)
+ #define ROUND_TO(x, y)			(((x) + (y) - 1) / (y) * (y))
+diff --git a/src/i810_driver.c b/src/i810_driver.c
+index 2aaf068..43ad259 100644
+--- a/src/i810_driver.c
++++ b/src/i810_driver.c
+@@ -157,6 +157,8 @@ static const struct pci_id_match intel_device_match[] = {
+    INTEL_DEVICE_MATCH (PCI_CHIP_G45_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_Q45_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_G41_G, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_IGDNG_D_G, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_IGDNG_M_G, 0 ),
+     { 0, 0, 0 },
+ };
+ 
+@@ -214,6 +216,8 @@ static SymTabRec I810Chipsets[] = {
+    {PCI_CHIP_G45_G,		"G45/G43"},
+    {PCI_CHIP_Q45_G,		"Q45/Q43"},
+    {PCI_CHIP_G41_G,		"G41"},
++   {PCI_CHIP_IGDNG_D_G,		"IGDNG_D"},
++   {PCI_CHIP_IGDNG_M_G,		"IGDNG_M"},
+    {-1,				NULL}
+ };
+ 
+@@ -248,6 +252,8 @@ static PciChipsets I810PciChipsets[] = {
+    {PCI_CHIP_G45_G,		PCI_CHIP_G45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q45_G,		PCI_CHIP_Q45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_G41_G,		PCI_CHIP_G41_G,		RES_SHARED_VGA},
++   {PCI_CHIP_IGDNG_D_G,		PCI_CHIP_IGDNG_D_G,	RES_SHARED_VGA},
++   {PCI_CHIP_IGDNG_M_G,		PCI_CHIP_IGDNG_M_G,	RES_SHARED_VGA},
+    {-1,				-1, RES_UNDEFINED }
+ };
+ 
+diff --git a/src/i830_driver.c b/src/i830_driver.c
+index 802bb2e..37155db 100644
+--- a/src/i830_driver.c
++++ b/src/i830_driver.c
+@@ -249,6 +249,8 @@ static SymTabRec I830Chipsets[] = {
+    {PCI_CHIP_G45_G,		"G45/G43"},
+    {PCI_CHIP_Q45_G,		"Q45/Q43"},
+    {PCI_CHIP_G41_G,		"G41"},
++   {PCI_CHIP_IGDNG_D_G,		"IGDNG_D"},
++   {PCI_CHIP_IGDNG_M_G,		"IGDNG_M"},
+    {-1,				NULL}
+ };
+ 
+@@ -277,6 +279,8 @@ static PciChipsets I830PciChipsets[] = {
+    {PCI_CHIP_G45_G,		PCI_CHIP_G45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q45_G,		PCI_CHIP_Q45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_G41_G,		PCI_CHIP_G41_G,		RES_SHARED_VGA},
++   {PCI_CHIP_IGDNG_D_G,		PCI_CHIP_IGDNG_D_G,	RES_SHARED_VGA},
++   {PCI_CHIP_IGDNG_M_G,		PCI_CHIP_IGDNG_M_G,	RES_SHARED_VGA},
+    {-1,				-1,			RES_UNDEFINED}
+ };
+ 
+@@ -503,7 +507,7 @@ I830DetectMemory(ScrnInfoPtr pScrn)
+    range = gtt_size + 4;
+ 
+    /* new 4 series hardware has seperate GTT stolen with GFX stolen */
+-   if (IS_G4X(pI830) || IS_GM45(pI830))
++   if (IS_G4X(pI830) || IS_GM45(pI830) || IS_IGDNG(pI830))
+        range = 4;
+ 
+    if (IS_I85X(pI830) || IS_I865G(pI830) || IS_I9XX(pI830)) {
+@@ -638,7 +642,7 @@ I830MapMMIO(ScrnInfoPtr pScrn)
+       
+       if (IS_I965G(pI830)) 
+       {
+-	 if (IS_GM45(pI830) || IS_G4X(pI830)) {
++	if (IS_GM45(pI830) || IS_G4X(pI830) || IS_IGDNG(pI830)) {
+ 	     gttaddr = pI830->MMIOAddr + MB(2);
+ 	     pI830->GTTMapSize = MB(2);
+ 	 } else {
+@@ -1333,6 +1337,12 @@ I830PreInit(ScrnInfoPtr pScrn, int flags)
+    case PCI_CHIP_GM45_GM:
+       chipname = "GM45";
+       break;
++   case PCI_CHIP_IGDNG_D_G:
++     chipname = "IGDNG_D";
++     break;
++   case PCI_CHIP_IGDNG_M_G:
++     chipname = "IGDNG_M";
++     break;
+    default:
+       chipname = "unknown chipset";
+       break;
+-- 
+1.6.5.rc2
+

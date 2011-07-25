@@ -1,0 +1,19 @@
+This is really vile.  fpparam changed size in IRL, which means terminator
+moved, which means it's never going to be 0xffff.  Rather than try to fix
+the whole block walk to use the right sizes, just know we got it right
+and don't try to second-guess things.
+
+If you're ever reading this, I'm very sorry. [ajax]
+
+diff -up xf86-video-intel-2.2.1/src/i830_bios.c.jx xf86-video-intel-2.2.1/src/i830_bios.c
+--- xf86-video-intel-2.2.1/src/i830_bios.c.jx	2008-02-20 16:41:25.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_bios.c	2010-02-26 15:06:03.000000000 -0500
+@@ -194,7 +194,7 @@ i830_bios_get_panel_mode(ScrnInfoPtr pSc
+ 	    timing_ptr = bios + bdb_off +
+ 	        lvds2->panels[panel_type].fp_edid_dtd_offset;
+ 
+-	    if (fpparam->terminator != 0xffff) {
++	    if (!IS_IGDNG(pI830) && fpparam->terminator != 0xffff) {
+ 		/* Apparently the offsets are wrong for some BIOSes, so we
+ 		 * try the other offsets if we find a bad terminator.
+ 		 */

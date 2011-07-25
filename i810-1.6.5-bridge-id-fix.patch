@@ -1,0 +1,35 @@
+diff -up ./xf86-video-i810-1.6.5/src/common.h.jx ./xf86-video-i810-1.6.5/src/common.h
+--- ./xf86-video-i810-1.6.5/src/common.h.jx	2007-08-15 13:49:41.000000000 -0400
++++ ./xf86-video-i810-1.6.5/src/common.h	2007-08-15 13:58:06.000000000 -0400
+@@ -278,10 +278,14 @@ extern int I810_DEBUG;
+ 
+ #ifndef PCI_CHIP_I945_GM
+ #define PCI_CHIP_I945_GM        0x27A2
+-#define PCI_CHIP_I945_GME       0x27AE
+ #define PCI_CHIP_I945_GM_BRIDGE 0x27A0
+ #endif
+ 
++#ifndef PCI_CHIP_I945_GME
++#define PCI_CHIP_I945_GME        0x27AE
++#define PCI_CHIP_I945_GME_BRIDGE 0x27AC
++#endif
++
+ #ifndef PCI_CHIP_I965_G_1
+ #define PCI_CHIP_I965_G_1		0x2982
+ #define PCI_CHIP_I965_G_1_BRIDGE 	0x2980
+@@ -300,10 +304,14 @@ extern int I810_DEBUG;
+ 
+ #ifndef PCI_CHIP_I965_GM
+ #define PCI_CHIP_I965_GM		0x2A02
+-#define PCI_CHIP_I965_GME		0x2A12
+ #define PCI_CHIP_I965_GM_BRIDGE 	0x2A00
+ #endif
+ 
++#ifndef PCI_CHIP_I965_GME
++#define PCI_CHIP_I965_GME		0x2A12
++#define PCI_CHIP_I965_GME_BRIDGE 	0x2A10
++#endif
++
+ #ifndef PCI_CHIP_I946_GZ
+ #define PCI_CHIP_I946_GZ		0x2972
+ #define PCI_CHIP_I946_GZ_BRIDGE 	0x2970

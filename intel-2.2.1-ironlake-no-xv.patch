@@ -1,0 +1,13 @@
+diff -up xf86-video-intel-2.2.1/src/i830_video.c.jx xf86-video-intel-2.2.1/src/i830_video.c
+--- xf86-video-intel-2.2.1/src/i830_video.c.jx	2010-02-16 10:41:41.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_video.c	2010-02-16 10:42:04.000000000 -0500
+@@ -532,6 +532,9 @@ I830InitVideo(ScreenPtr pScreen)
+     XF86VideoAdaptorPtr overlayAdaptor = NULL, texturedAdaptor = NULL;
+     int num_adaptors;
+ 
++    if (IS_IGDNG(pI830))
++	return;
++
+ #if 0
+     {
+ 	I830OverlayRegRec tmp;

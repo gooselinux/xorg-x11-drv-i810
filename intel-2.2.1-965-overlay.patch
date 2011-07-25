@@ -1,0 +1,70 @@
+commit 5915c75422c5277d530e7f8ecbdfe94654706efd
+Author: Jesse Barnes <jbarnes@hobbes.virtuousgeek.org>
+Date:   Fri Mar 7 13:18:09 2008 -0800
+
+    Enable hardware overlay on 965
+    
+    Based on Maxim Levitsky's patch for the same.  Many thanks to Maxim for
+    discovering that this features still works in recent hardware!
+
+diff --git a/src/i830_memory.c b/src/i830_memory.c
+index ad34f19..e9097ec 100644
+--- a/src/i830_memory.c
++++ b/src/i830_memory.c
+@@ -1044,15 +1044,13 @@
+     if (!OVERLAY_NOPHYSICAL(pI830))
+ 	flags |= NEED_PHYSICAL_ADDR;
+ 
+-    if (!IS_I965G(pI830)) {
+-	pI830->overlay_regs = i830_allocate_memory(pScrn, "overlay registers",
+-						   OVERLAY_SIZE, GTT_PAGE_SIZE,
+-						   flags);
+-	if (pI830->overlay_regs == NULL) {
+-	    xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
+-		       "Failed to allocate Overlay register space.\n");
+-	    /* This failure isn't fatal. */
+-	}
++    pI830->overlay_regs = i830_allocate_memory(pScrn, "overlay registers",
++					       OVERLAY_SIZE, GTT_PAGE_SIZE,
++					       flags);
++    if (pI830->overlay_regs == NULL) {
++	xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
++		   "Failed to allocate Overlay register space.\n");
++	/* This failure isn't fatal. */
+     }
+ 
+     return TRUE;
+diff --git a/src/i830_video.c b/src/i830_video.c
+--- a/src/i830_video.c
++++ b/src/i830_video.c
+@@ -352,7 +352,7 @@
+     I830CrtcPrivatePtr  intel_crtc = crtc->driver_private;
+     int			pipeconf_reg = intel_crtc->pipe == 0 ? PIPEACONF : PIPEBCONF;
+ 
+-    if (INREG(pipeconf_reg) & PIPEACONF_DOUBLE_WIDE)
++    if (!IS_I965G(pI830) && (INREG(pipeconf_reg) & PIPEACONF_DOUBLE_WIDE))
+ 	pPriv->overlayOK = FALSE;
+     else
+ 	pPriv->overlayOK = TRUE;
+@@ -2563,10 +2563,6 @@
+     if (pI830->adaptor == NULL)
+         return;
+ 
+-    /* No overlay scaler on the 965. */
+-    if (IS_I965G(pI830))
+-        return;
+-
+     pPriv = GET_PORT_PRIVATE(pScrn);
+ 
+     if (pPriv->videoStatus & TIMER_MASK) {
+@@ -2846,10 +2842,6 @@
+     if (pI830->adaptor == NULL)
+ 	return;
+ 
+-    /* No overlay scaler on the 965. */
+-    if (IS_I965G(pI830))
+-	return;
+-
+     pPriv = GET_PORT_PRIVATE(pScrn);
+ 
+     if (crtc != pPriv->current_crtc)

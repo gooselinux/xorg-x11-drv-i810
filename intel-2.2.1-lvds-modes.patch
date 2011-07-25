@@ -1,0 +1,70 @@
+diff -up xf86-video-intel-2.2.1/src/i830_lvds.c.lvds-modes xf86-video-intel-2.2.1/src/i830_lvds.c
+--- xf86-video-intel-2.2.1/src/i830_lvds.c.lvds-modes	2009-05-13 18:20:40.000000000 -0400
++++ xf86-video-intel-2.2.1/src/i830_lvds.c	2009-05-13 19:13:24.000000000 -0400
+@@ -622,14 +622,12 @@ i830_lvds_get_modes(xf86OutputPtr output
+     I830OutputPrivatePtr    intel_output = output->driver_private;
+     struct i830_lvds_priv   *dev_priv = intel_output->dev_priv;
+     xf86MonPtr		    edid_mon;
+-    DisplayModePtr	    modes;
++    DisplayModePtr	    modes = NULL;
+ 
+     edid_mon = xf86OutputGetEDID (output, intel_output->pDDCBus);
+     xf86OutputSetEDID (output, edid_mon);
+     
+     modes = xf86OutputGetEDIDModes (output);
+-    if (modes != NULL)
+-	return modes;
+ 
+     if (!output->MonInfo)
+     {
+@@ -650,9 +648,48 @@ i830_lvds_get_modes(xf86OutputPtr output
+     }
+ 
+     if (dev_priv->panel_fixed_mode != NULL)
+-	return xf86DuplicateMode(dev_priv->panel_fixed_mode);
++	modes = xf86ModesAdd(modes,
++			     xf86DuplicateMode(dev_priv->panel_fixed_mode));
+ 
+-    return NULL;
++    /* Add default modes if we don't already have some */
++    if (!edid_mon || !GTF_SUPPORTED(edid_mon->features.msc))
++    {
++	DisplayModePtr m, i, p = NULL;
++	int max_x = 0, max_y = 0;
++	float max_vrefresh = 0.0;
++
++	for (m = modes; m; m = m->next)
++	{
++	    if (m->type & M_T_PREFERRED)
++		p = m;
++	    max_x = max(max_x, m->HDisplay);
++	    max_y = max(max_y, m->VDisplay);
++	    max_vrefresh = max(max_vrefresh, xf86ModeVRefresh(m));
++	}
++
++	max_vrefresh = max(max_vrefresh, 60.0);
++	max_vrefresh *= (1 + SYNC_TOLERANCE);
++
++	m = xf86GetDefaultModes();
++
++	xf86ValidateModesSize(output->scrn, m, max_x, max_y, 0);
++
++	for (i = m; i; i = i->next)
++	{
++	    if (xf86ModeVRefresh(i) > max_vrefresh)
++		i->status = MODE_VSYNC;
++	    if (p && i->HDisplay >= p->HDisplay &&
++		    i->VDisplay >= p->VDisplay &&
++		    xf86ModeVRefresh(i) >= xf86ModeVRefresh(p))
++		i->status = MODE_VSYNC;
++	}
++
++	xf86PruneInvalidModes(output->scrn, &m, FALSE);
++
++	modes = xf86ModesAdd(modes, m);
++    }
++
++    return modes;
+ }
+ 
+ static void

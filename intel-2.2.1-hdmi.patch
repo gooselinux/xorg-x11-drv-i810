@@ -1,0 +1,384 @@
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 118d4b1..6e55694 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -94,6 +94,7 @@ intel_drv_la_SOURCES = \
+          i830_driver.c \
+ 	 i830_dvo.c \
+          i830.h \
++	 i830_hdmi.c \
+          i830_i2c.c \
+          i830_io.c \
+ 	 i830_lvds.c \
+diff --git a/src/i810_reg.h b/src/i810_reg.h
+index d2ce3ab..b21f8c4 100644
+--- a/src/i810_reg.h
++++ b/src/i810_reg.h
+@@ -1146,6 +1146,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ # define FP_M2_DIV_SHIFT			0
+ 
+ #define PORT_HOTPLUG_EN		0x61110
++# define HDMIB_HOTPLUG_INT_EN			(1 << 29)
++# define HDMIC_HOTPLUG_INT_EN			(1 << 28)
++# define HDMID_HOTPLUG_INT_EN			(1 << 27)
+ # define SDVOB_HOTPLUG_INT_EN			(1 << 26)
+ # define SDVOC_HOTPLUG_INT_EN			(1 << 25)
+ # define TV_HOTPLUG_INT_EN			(1 << 18)
+@@ -1153,6 +1156,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ # define CRT_HOTPLUG_FORCE_DETECT		(1 << 3)
+ 
+ #define PORT_HOTPLUG_STAT	0x61114
++# define HDMIB_HOTPLUG_INT_STATUS		(1 << 29)
++# define HDMIC_HOTPLUG_INT_STATUS		(1 << 28)
++# define HDMID_HOTPLUG_INT_STATUS		(1 << 27)
+ # define CRT_HOTPLUG_INT_STATUS			(1 << 11)
+ # define TV_HOTPLUG_INT_STATUS			(1 << 10)
+ # define CRT_HOTPLUG_MONITOR_MASK		(3 << 8)
+@@ -1181,7 +1187,16 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ #define SDVO_PHASE_SELECT_DEFAULT		(6 << 19)
+ #define SDVO_CLOCK_OUTPUT_INVERT		(1 << 18)
+ #define SDVOC_GANG_MODE				(1 << 16)
++#define SDVO_ENCODING_SDVO			(0x0 << 10)
++#define SDVO_ENCODING_HDMI			(0x2 << 10)
++/** Requird for HDMI operation */
++#define SDVO_NULL_PACKETS_DURING_VSYNC		(1 << 9)
+ #define SDVO_BORDER_ENABLE			(1 << 7)
++/** New with 965, default is to be set */
++#define SDVO_VSYNC_ACTIVE_HIGH			(1 << 4)
++/** New with 965, default is to be set */
++#define SDVO_HSYNC_ACTIVE_HIGH			(1 << 3)
++/** 915/945 only, read-only bit */
+ #define SDVOB_PCIE_CONCURRENCY			(1 << 3)
+ #define SDVO_DETECTED				(1 << 2)
+ /* Bits to be preserved when writing */
+@@ -2675,4 +2690,30 @@ typedef enum {
+ #define FBC_LL_SIZE		(1536)
+ #define FBC_LL_PAD		(32)
+ 
++/* Framebuffer compression version 2 */
++#define DPFC_CB_BASE		0x3200
++#define DPFC_CONTROL		0x3208
++#define   DPFC_CTL_EN		(1<<31)
++#define   DPFC_CTL_PLANEA	(0<<30)
++#define   DPFC_CTL_PLANEB	(1<<30)
++#define   DPFC_CTL_FENCE_EN	(1<<29)
++#define   DPFC_CTL_LIMIT_1X	(0<<6)
++#define   DPFC_CTL_LIMIT_2X	(1<<6)
++#define   DPFC_CTL_LIMIT_4X	(2<<6)
++#define DPFC_RECOMP_CTL		0x320c
++#define   DPFC_RECOMP_STALL_EN	(1<<27)
++#define   DPFC_RECOMP_STALL_WM_SHIFT (16)
++#define   DPFC_RECOMP_STALL_WM_MASK (0x07ff0000)
++#define   DPFC_RECOMP_TIMER_COUNT_SHIFT (0)
++#define   DPFC_RECOMP_TIMER_COUNT_MASK (0x0000003f)
++#define DPFC_STATUS		0x3210
++#define   DPFC_INVAL_SEG_SHIFT  (16)
++#define   DPFC_INVAL_SEG_MASK	(0x07ff0000)
++#define   DPFC_COMP_SEG_SHIFT	(0)
++#define   DPFC_COMP_SEG_MASK	(0x000003ff)
++#define DPFC_STATUS2		0x3214
++#define DPFC_FENCE_YOFF		0x3218
++
++#define PEG_BAND_GAP_DATA	0x14d68
++
+ #endif /* _I810_REG_H */
+diff --git a/src/i830.h b/src/i830.h
+index 132f089..e9bfb27 100644
+--- a/src/i830.h
++++ b/src/i830.h
+@@ -232,6 +232,7 @@ typedef struct {
+ #define I830_OUTPUT_SDVO 5
+ #define I830_OUTPUT_LVDS 6
+ #define I830_OUTPUT_TVOUT 7
++#define I830_OUTPUT_HDMI 8
+ 
+ struct _I830DVODriver {
+    int type;
+@@ -755,6 +756,9 @@ void i830_crt_init(ScrnInfoPtr pScrn);
+ /* i830_dvo.c */
+ void i830_dvo_init(ScrnInfoPtr pScrn);
+ 
++/* i830_hdmi.c */
++void i830_hdmi_init(ScrnInfoPtr pScrn, int output_reg);
++
+ /* i830_lvds.c */
+ void i830_lvds_init(ScrnInfoPtr pScrn);
+ 
+diff --git a/src/i830_display.c b/src/i830_display.c
+index 85a89f7..c85c163 100644
+--- a/src/i830_display.c
++++ b/src/i830_display.c
+@@ -1031,6 +1031,7 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, DisplayModePtr mode,
+ 	    is_lvds = TRUE;
+ 	    break;
+ 	case I830_OUTPUT_SDVO:
++	case I830_OUTPUT_HDMI:
+ 	    is_sdvo = TRUE;
+ 	    break;
+ 	case I830_OUTPUT_DVO_TMDS:
+diff --git a/src/i830_driver.c b/src/i830_driver.c
+index 9afecb0..07bf524 100644
+--- a/src/i830_driver.c
++++ b/src/i830_driver.c
+@@ -916,8 +916,13 @@ I830SetupOutputs(ScrnInfoPtr pScrn)
+       i830_lvds_init(pScrn);
+ 
+    if (IS_I9XX(pI830)) {
++#if 1
+       i830_sdvo_init(pScrn, SDVOB);
+       i830_sdvo_init(pScrn, SDVOC);
++#else
++      i830_hdmi_init(pScrn, SDVOB);
++      i830_hdmi_init(pScrn, SDVOC);
++#endif
+    } else {
+       i830_dvo_init(pScrn);
+    }
+diff --git a/src/i830_hdmi.c b/src/i830_hdmi.c
+new file mode 100644
+index 0000000..d56eec9
+--- /dev/null
++++ b/src/i830_hdmi.c
+@@ -0,0 +1,242 @@
++/*
++ * Copyright © 2007 Intel Corporation
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++ * IN THE SOFTWARE.
++ *
++ * Authors:
++ *    Eric Anholt <eric@anholt.net>
++ *
++ */
++
++#ifdef HAVE_CONFIG_H
++#include "config.h"
++#endif
++
++#include "xf86.h"
++#include "i830.h"
++#include "xf86Modes.h"
++#include "i830_display.h"
++
++struct i830_hdmi_priv {
++    uint32_t output_reg;
++
++    uint32_t save_SDVO;
++};
++
++static int
++i830_hdmi_mode_valid(xf86OutputPtr output, DisplayModePtr mode)
++{
++    if (mode->Clock > 165000)
++	return MODE_CLOCK_HIGH;
++
++    if (mode->Clock < 20000)
++	return MODE_CLOCK_LOW;
++
++    return MODE_OK;
++}
++
++static Bool
++i830_hdmi_mode_fixup(xf86OutputPtr output, DisplayModePtr mode,
++		     DisplayModePtr adjusted_mode)
++{
++    /* The HDMI output doesn't need the pixel multiplication that SDVO does,
++     * so no fixup.
++     */
++    return TRUE;
++}
++
++static void
++i830_hdmi_mode_set(xf86OutputPtr output, DisplayModePtr mode,
++		   DisplayModePtr adjusted_mode)
++{
++    ScrnInfoPtr pScrn = output->scrn;
++    I830OutputPrivatePtr intel_output = output->driver_private;
++    struct i830_hdmi_priv *dev_priv = intel_output->dev_priv;
++    I830Ptr pI830 = I830PTR(pScrn);
++    xf86CrtcPtr crtc = output->crtc;
++    I830CrtcPrivatePtr intel_crtc = crtc->driver_private;
++    uint32_t sdvox;
++
++    sdvox = SDVO_ENCODING_HDMI |
++	SDVO_BORDER_ENABLE |
++	SDVO_VSYNC_ACTIVE_HIGH |
++	SDVO_HSYNC_ACTIVE_HIGH;
++    if (intel_crtc->pipe == 1)
++	sdvox |= SDVO_PIPE_B_SELECT;
++
++    OUTREG(dev_priv->output_reg, sdvox);
++    POSTING_READ(dev_priv->output_reg);
++}
++
++static void
++i830_hdmi_dpms(xf86OutputPtr output, int mode)
++{
++    ScrnInfoPtr pScrn = output->scrn;
++    I830OutputPrivatePtr intel_output = output->driver_private;
++    struct i830_hdmi_priv *dev_priv = intel_output->dev_priv;
++    I830Ptr pI830 = I830PTR(pScrn);
++    uint32_t  temp;
++
++    if (mode == DPMSModeOff) {
++	temp = INREG(dev_priv->output_reg);
++	OUTREG(dev_priv->output_reg, temp & ~SDVO_ENABLE);
++    } else {
++	temp = INREG(dev_priv->output_reg);
++	OUTREG(dev_priv->output_reg, temp | SDVO_ENABLE);
++    }
++}
++
++static void
++i830_hdmi_save(xf86OutputPtr output)
++{
++    ScrnInfoPtr pScrn = output->scrn;
++    I830OutputPrivatePtr intel_output = output->driver_private;
++    struct i830_hdmi_priv *dev_priv = intel_output->dev_priv;
++    I830Ptr pI830 = I830PTR(pScrn);
++
++    dev_priv->save_SDVO = INREG(dev_priv->output_reg);
++}
++
++static void
++i830_hdmi_restore(xf86OutputPtr output)
++{
++    ScrnInfoPtr pScrn = output->scrn;
++    I830OutputPrivatePtr intel_output = output->driver_private;
++    struct i830_hdmi_priv *dev_priv = intel_output->dev_priv;
++    I830Ptr pI830 = I830PTR(pScrn);
++
++    OUTREG(dev_priv->output_reg, dev_priv->save_SDVO);
++}
++
++/**
++ * Uses CRT_HOTPLUG_EN and CRT_HOTPLUG_STAT to detect HDMI connection.
++ *
++ * \return TRUE if HDMI port is connected.
++ * \return FALSE if HDMI port is disconnected.
++ */
++static xf86OutputStatus
++i830_hdmi_detect(xf86OutputPtr output)
++{
++    ScrnInfoPtr	pScrn = output->scrn;
++    I830OutputPrivatePtr intel_output = output->driver_private;
++    struct i830_hdmi_priv *dev_priv = intel_output->dev_priv;
++    I830Ptr pI830 = I830PTR(pScrn);
++    uint32_t temp, bit;
++
++    /* For G4X, PEG_BAND_GAP_DATA 3:0 must first be written 0xd.
++     * Failure to do so will result in spurious interrupts being
++     * generated on the port when a cable is not attached.
++     */
++    if (IS_G4X(pI830)) {
++	temp = INREG(PEG_BAND_GAP_DATA);
++	OUTREG(PEG_BAND_GAP_DATA, (temp & ~0xf) | 0xd);
++    }
++
++    temp = INREG(PORT_HOTPLUG_EN);
++
++    OUTREG(PORT_HOTPLUG_EN,
++	   temp |
++	   HDMIB_HOTPLUG_INT_EN |
++	   HDMIC_HOTPLUG_INT_EN |
++	   HDMID_HOTPLUG_INT_EN);
++
++    POSTING_READ(PORT_HOTPLUG_EN);
++
++    switch (dev_priv->output_reg) {
++    case SDVOB:
++	bit = HDMIB_HOTPLUG_INT_STATUS;
++	break;
++    case SDVOC:
++	bit = HDMIC_HOTPLUG_INT_STATUS;
++	break;
++    default:
++	return XF86OutputStatusUnknown;
++    }
++
++    if ((INREG(PORT_HOTPLUG_STAT) & bit) != 0)
++	return XF86OutputStatusConnected;
++    else
++	return XF86OutputStatusDisconnected;
++}
++
++static void
++i830_hdmi_destroy (xf86OutputPtr output)
++{
++    I830OutputPrivatePtr intel_output = output->driver_private;
++
++    if (intel_output != NULL) {
++	xf86DestroyI2CBusRec(intel_output->pDDCBus, FALSE, FALSE);
++	xfree(intel_output);
++    }
++}
++
++static const xf86OutputFuncsRec i830_hdmi_output_funcs = {
++    .dpms = i830_hdmi_dpms,
++    .save = i830_hdmi_save,
++    .restore = i830_hdmi_restore,
++    .mode_valid = i830_hdmi_mode_valid,
++    .mode_fixup = i830_hdmi_mode_fixup,
++    .prepare = i830_output_prepare,
++    .mode_set = i830_hdmi_mode_set,
++    .commit = i830_output_commit,
++    .detect = i830_hdmi_detect,
++    .get_modes = i830_ddc_get_modes,
++    .destroy = i830_hdmi_destroy
++};
++
++void
++i830_hdmi_init(ScrnInfoPtr pScrn, int output_reg)
++{
++    xf86OutputPtr output;
++    I830OutputPrivatePtr intel_output;
++    struct i830_hdmi_priv *dev_priv;
++
++    output = xf86OutputCreate(pScrn, &i830_hdmi_output_funcs,
++			      (output_reg == SDVOB) ? "HDMI-1" : "HDMI-2");
++    if (!output)
++	return;
++    intel_output = xnfcalloc(sizeof (I830OutputPrivateRec) +
++			     sizeof (struct i830_hdmi_priv), 1);
++    if (intel_output == NULL) {
++	xf86OutputDestroy(output);
++	return;
++    }
++    output->driver_private = intel_output;
++    output->interlaceAllowed = FALSE;
++    output->doubleScanAllowed = FALSE;
++
++    dev_priv = (struct i830_hdmi_priv *)(intel_output + 1);
++    dev_priv->output_reg = output_reg;
++
++    intel_output->dev_priv = dev_priv;
++    intel_output->type = I830_OUTPUT_HDMI;
++    intel_output->pipe_mask = ((1 << 0) | (1 << 1));
++    intel_output->clone_mask = (1 << I830_OUTPUT_HDMI);
++
++    /* Set up the DDC bus. */
++    if (output_reg == SDVOB)
++	I830I2CInit(pScrn, &intel_output->pDDCBus, GPIOE, "HDMIDDC_B");
++    else
++	I830I2CInit(pScrn, &intel_output->pDDCBus, GPIOD, "HDMIDDC_C");
++
++    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
++	       "HDMI output %d detected\n",
++	       (output_reg == SDVOB) ? 1 : 2);
++}

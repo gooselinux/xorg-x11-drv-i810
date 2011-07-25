@@ -1,0 +1,103 @@
+From bce5a0b463fa999d85bbd0c9862a3fed60c419e9 Mon Sep 17 00:00:00 2001
+From: Zhenyu Wang <zhenyuw@linux.intel.com>
+Date: Mon, 8 Jun 2009 10:22:14 +0800
+Subject: [PATCH 4/5] Remove fixed MMIO size
+
+Use pci resource size instead, which will get the correct MMIO range.
+New chipset uses obviously larger MMIO range.
+
+Signed-off-by: Zhenyu Wang <zhenyuw@linux.intel.com>
+---
+ src/i830.h        |    1 +
+ src/i830_dri.c    |    2 +-
+ src/i830_driver.c |   16 +++++++++-------
+ 3 files changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/src/i830.h b/src/i830.h
+index 322c171..9735be5 100644
+--- a/src/i830.h
++++ b/src/i830.h
+@@ -443,6 +443,7 @@ typedef struct _I830Rec {
+    int Chipset;
+    unsigned long LinearAddr;
+    unsigned long MMIOAddr;
++   unsigned int MMIOSize;
+    IOADDRESS ioBase;
+    EntityInfoPtr pEnt;
+ #if XSERVER_LIBPCIACCESS
+diff --git a/src/i830_dri.c b/src/i830_dri.c
+index d802cd4..59bb4a0 100644
+--- a/src/i830_dri.c
++++ b/src/i830_dri.c
+@@ -792,7 +792,7 @@ I830DRIDoMappings(ScreenPtr pScreen)
+    drmI830Sarea *sarea = (drmI830Sarea *) DRIGetSAREAPrivate(pScreen);
+ 
+    DPRINTF(PFX, "I830DRIDoMappings\n");
+-   pI830DRI->regsSize = I830_REG_SIZE;
++   pI830DRI->regsSize = pI830->MMIOSize;
+    if (drmAddMap(pI830->drmSubFD, (drm_handle_t)pI830->MMIOAddr,
+ 		 pI830DRI->regsSize, DRM_REGISTERS, 0,
+ 		 (drmAddress) &pI830DRI->regs) < 0) {
+diff --git a/src/i830_driver.c b/src/i830_driver.c
+index 37155db..69704e6 100644
+--- a/src/i830_driver.c
++++ b/src/i830_driver.c
+@@ -609,7 +609,7 @@ I830MapMMIO(ScrnInfoPtr pScrn)
+    device = pI830->PciInfo;
+    err = pci_device_map_range (device,
+ 			       pI830->MMIOAddr,
+-			       I810_REG_SIZE,
++			       pI830->MMIOSize,
+ 			       PCI_DEV_MAP_FLAG_WRITABLE,
+ 			       (void **) &pI830->MMIOBase);
+    if (err) 
+@@ -627,9 +627,9 @@ I830MapMMIO(ScrnInfoPtr pScrn)
+    mmioFlags = VIDMEM_MMIO | VIDMEM_READSIDEEFFECT | VIDMEM_SPARSE;
+ #endif
+ 
+-   pI830->MMIOBase = xf86MapPciMem(pScrn->scrnIndex, mmioFlags,
++    pI830->MMIOBase = xf86MapPciMem(pScrn->scrnIndex, mmioFlags,
+ 				   pI830->PciTag,
+-				   pI830->MMIOAddr, I810_REG_SIZE);
++				   pI830->MMIOAddr, pI830->MMIOSize);
+    if (!pI830->MMIOBase)
+       return FALSE;
+ #endif
+@@ -736,10 +736,10 @@ I830UnmapMMIO(ScrnInfoPtr pScrn)
+    I830Ptr pI830 = I830PTR(pScrn);
+ 
+ #if XSERVER_LIBPCIACCESS
+-   pci_device_unmap_range (pI830->PciInfo, pI830->MMIOBase, I810_REG_SIZE);
++   pci_device_unmap_range (pI830->PciInfo, pI830->MMIOBase, pI830->MMIOSize);
+ #else
+    xf86UnMapVidMem(pScrn->scrnIndex, (pointer) pI830->MMIOBase,
+-		   I810_REG_SIZE);
++		   pI830->MMIOSize);
+ #endif
+    pI830->MMIOBase = NULL;
+ 
+@@ -1405,6 +1405,7 @@ I830PreInit(ScrnInfoPtr pScrn, int flags)
+    if (pI830->pEnt->device->IOBase != 0) {
+       pI830->MMIOAddr = pI830->pEnt->device->IOBase;
+       from = X_CONFIG;
++      pI830->MMIOSize = I810_REG_SIZE;
+    } else {
+       pI830->MMIOAddr = I810_MEMBASE (pI830->PciInfo, mmio_bar);
+       if (pI830->MMIOAddr == 0) {
+@@ -1413,10 +1414,11 @@ I830PreInit(ScrnInfoPtr pScrn, int flags)
+ 	 PreInitCleanup(pScrn);
+ 	 return FALSE;
+       }
++      pI830->MMIOSize = 1 << pI830->PciInfo->size[mmio_bar];
+    }
+ 
+-   xf86DrvMsg(pScrn->scrnIndex, from, "IO registers at addr 0x%lX\n",
+-	      (unsigned long)pI830->MMIOAddr);
++   xf86DrvMsg(pScrn->scrnIndex, from, "IO registers at addr 0x%lX, size %dk\n",
++	      (unsigned long)pI830->MMIOAddr, pI830->MMIOSize / 1024);
+ 
+    /* check quirks */
+    i830_fixup_devices(pScrn);
+-- 
+1.6.5.rc2
+

@@ -1,0 +1,74 @@
+--- xf86-video-intel-2.2.1/src/i830_driver.c.dri	2008-04-24 11:03:41.000000000 +1000
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2008-04-24 11:03:42.000000000 +1000
+@@ -2453,22 +2453,12 @@
+ 		 pScrn->videoRam & ~3, pScrn->videoRam);
+       pScrn->videoRam &= ~3;
+    }
+-
+ #ifdef XF86DRI
+    /* Check for appropriate bpp and module support to initialize DRI. */
+    if (!I830CheckDRIAvailable(pScrn)) {
+       pI830->directRenderingDisabled = TRUE;
+-   }
+-
+-   /* If DRI hasn't been explicitly disabled, try to initialize it.
+-    * It will be used by the memory allocator.
+-    */
+-   if (!pI830->directRenderingDisabled)
+-      pI830->directRenderingEnabled = I830DRIScreenInit(pScreen);
+-   else
+-      pI830->directRenderingEnabled = FALSE;
+-#else
+-   pI830->directRenderingEnabled = FALSE;
++   } else
++      pI830->directRenderingEnabled = TRUE;
+ #endif
+ 
+    /* Set up our video memory allocator for the chosen videoRam */
+@@ -2661,6 +2651,18 @@
+       allocation_done = TRUE;
+    }
+ 
++#ifdef XF86DRI
++
++   /* If DRI hasn't been explicitly disabled, try to initialize it.
++    * It will be used by the memory allocator.
++    */
++   if (!pI830->directRenderingDisabled)
++      pI830->directRenderingEnabled = I830DRIScreenInit(pScreen);
++   else
++      pI830->directRenderingEnabled = FALSE;
++#else
++   pI830->directRenderingEnabled = FALSE;
++#endif
+    I830UnmapMMIO(pScrn);
+ 
+    if (!IS_I965G(pI830) && pScrn->displayWidth > 2048) {
+--- xf86-video-intel-2.2.1/src/i830_dri.c.dri	2008-02-23 03:51:39.000000000 +1000
++++ xf86-video-intel-2.2.1/src/i830_dri.c	2008-04-24 11:04:36.000000000 +1000
+@@ -130,7 +130,7 @@
+ 
+ #if (DRIINFO_MAJOR_VERSION > 5 || \
+      (DRIINFO_MAJOR_VERSION == 5 && DRIINFO_MINOR_VERSION >= 4))
+-#define DRI_DRIVER_FRAMEBUFFER_MAP 1
++#define DRI_DRIVER_FRAMEBUFFER_MAP 0
+ #else
+ #define DRI_DRIVER_FRAMEBUFFER_MAP 0
+ #endif
+@@ -613,9 +613,13 @@
+ #else
+    /* Supply a dummy mapping info required by DRI setup.
+     */
+-   pDRIInfo->frameBufferPhysicalAddress = (char *) pI830->LinearAddr;
+-   pDRIInfo->frameBufferSize = GTT_PAGE_SIZE;
+-   pDRIInfo->frameBufferStride = 1;
++   pDRIInfo->frameBufferPhysicalAddress = (char *) pI830->LinearAddr + pI830->front_buffer->offset;
++   /* Workaround for XAA pixmap cache: Don't use front_buffer->size
++    * and instead, calculate the visible frontbuffer size and round to
++    * avoid irritating the assertions of older DRI drivers.
++    */
++   pDRIInfo->frameBufferSize = ROUND_TO_PAGE(pScrn->displayWidth * pScrn->virtualY * pI830->cpp);
++   pDRIInfo->frameBufferStride = pScrn->displayWidth;
+ #endif
+ 
+    pDRIInfo->TransitionTo2d = I830DRITransitionTo2d;

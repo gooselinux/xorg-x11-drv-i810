@@ -1,0 +1,78 @@
+diff -up xf86-video-intel-2.2.1/src/common.h.jx xf86-video-intel-2.2.1/src/common.h
+--- xf86-video-intel-2.2.1/src/common.h.jx	2010-01-11 16:31:11.000000000 -0500
++++ xf86-video-intel-2.2.1/src/common.h	2010-01-11 16:31:39.000000000 -0500
+@@ -429,6 +429,11 @@ extern int I810_DEBUG;
+ #define PCI_CHIP_IGDNG_M_G_BRIDGE      0x0044
+ #endif
+ 
++#ifndef PCI_CHIP_B43_G
++#define PCI_CHIP_B43_G		0x2E42
++#define PCI_CHIP_B43_G_BRIDGE	0x2E40
++#endif
++
+ #if XSERVER_LIBPCIACCESS
+ #define I810_MEMBASE(p,n) (p)->regions[(n)].base_addr
+ #define VENDOR_ID(p)      (p)->vendor_id
+@@ -461,7 +466,7 @@ extern int I810_DEBUG;
+ #define IS_I945G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I945_G)
+ #define IS_I945GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I945_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I945_GME)
+ #define IS_GM45(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_GM45_GM)
+-#define IS_G4X(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGD_E_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G41_G)
++#define IS_G4X(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGD_E_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G41_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_B43_G || IS_GM45(pI810))
+ #define IS_I965GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME)
+ #define IS_IGDNG_D(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGDNG_D_G)
+ #define IS_IGDNG_M(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGDNG_M_G)
+diff -up xf86-video-intel-2.2.1/src/i810_driver.c.jx xf86-video-intel-2.2.1/src/i810_driver.c
+--- xf86-video-intel-2.2.1/src/i810_driver.c.jx	2010-01-11 16:31:11.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i810_driver.c	2010-01-11 16:33:08.000000000 -0500
+@@ -157,6 +157,7 @@ static const struct pci_id_match intel_d
+    INTEL_DEVICE_MATCH (PCI_CHIP_G45_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_Q45_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_G41_G, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_B43_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_IGDNG_D_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_IGDNG_M_G, 0 ),
+     { 0, 0, 0 },
+@@ -216,6 +217,7 @@ static SymTabRec I810Chipsets[] = {
+    {PCI_CHIP_G45_G,		"G45/G43"},
+    {PCI_CHIP_Q45_G,		"Q45/Q43"},
+    {PCI_CHIP_G41_G,		"G41"},
++   {PCI_CHIP_B43_G,		"B43"},
+    {PCI_CHIP_IGDNG_D_G,		"IGDNG_D"},
+    {PCI_CHIP_IGDNG_M_G,		"IGDNG_M"},
+    {-1,				NULL}
+@@ -252,6 +254,7 @@ static PciChipsets I810PciChipsets[] = {
+    {PCI_CHIP_G45_G,		PCI_CHIP_G45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q45_G,		PCI_CHIP_Q45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_G41_G,		PCI_CHIP_G41_G,		RES_SHARED_VGA},
++   {PCI_CHIP_B43_G,		PCI_CHIP_B43_G,		RES_SHARED_VGA},
+    {PCI_CHIP_IGDNG_D_G,		PCI_CHIP_IGDNG_D_G,	RES_SHARED_VGA},
+    {PCI_CHIP_IGDNG_M_G,		PCI_CHIP_IGDNG_M_G,	RES_SHARED_VGA},
+    {-1,				-1, RES_UNDEFINED }
+@@ -822,6 +825,7 @@ I810Probe(DriverPtr drv, int flags)
+ 	    case PCI_CHIP_G45_G:
+ 	    case PCI_CHIP_Q45_G:
+ 	    case PCI_CHIP_G41_G:
++	    case PCI_CHIP_B43_G:
+ 	    case PCI_CHIP_IGDNG_D_G:
+ 	    case PCI_CHIP_IGDNG_M_G:
+     	       xf86SetEntitySharable(usedChips[i]);
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.jx xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.jx	2010-01-11 16:31:11.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2010-01-11 16:33:42.000000000 -0500
+@@ -249,6 +249,7 @@ static SymTabRec I830Chipsets[] = {
+    {PCI_CHIP_G45_G,		"G45/G43"},
+    {PCI_CHIP_Q45_G,		"Q45/Q43"},
+    {PCI_CHIP_G41_G,		"G41"},
++   {PCI_CHIP_B43_G,		"B43"},
+    {PCI_CHIP_IGDNG_D_G,		"IGDNG_D"},
+    {PCI_CHIP_IGDNG_M_G,		"IGDNG_M"},
+    {-1,				NULL}
+@@ -279,6 +280,7 @@ static PciChipsets I830PciChipsets[] = {
+    {PCI_CHIP_G45_G,		PCI_CHIP_G45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q45_G,		PCI_CHIP_Q45_G,		RES_SHARED_VGA},
+    {PCI_CHIP_G41_G,		PCI_CHIP_G41_G,		RES_SHARED_VGA},
++   {PCI_CHIP_B43_G,		PCI_CHIP_B43_G,		RES_SHARED_VGA},
+    {PCI_CHIP_IGDNG_D_G,		PCI_CHIP_IGDNG_D_G,	RES_SHARED_VGA},
+    {PCI_CHIP_IGDNG_M_G,		PCI_CHIP_IGDNG_M_G,	RES_SHARED_VGA},
+    {-1,				-1,			RES_UNDEFINED}

@@ -1,0 +1,17 @@
+--- xorg-x11-drv-i810-1.6.5/xf86-video-i810-1.6.5/src/i830_driver.c.server-ranges	2006-09-12 18:50:06.000000000 -0400
++++ xorg-x11-drv-i810-1.6.5/xf86-video-i810-1.6.5/src/i830_driver.c	2006-09-12 18:50:28.000000000 -0400
+@@ -5080,10 +5080,10 @@ I830BIOSPreInit(ScrnInfoPtr pScrn, int f
+     * We unset them after the call, so we can report 'defaults' as being
+     * used through the common layer.
+     */
+-#define DEFAULT_HSYNC_LO 28
+-#define DEFAULT_HSYNC_HI 33
+-#define DEFAULT_VREFRESH_LO 43
+-#define DEFAULT_VREFRESH_HI 72
++#define DEFAULT_HSYNC_LO 31.5
++#define DEFAULT_HSYNC_HI 37.9
++#define DEFAULT_VREFRESH_LO 50
++#define DEFAULT_VREFRESH_HI 70
+ 
+    if (pScrn->monitor->nHsync == 0) {
+       pScrn->monitor->hsync[0].lo = DEFAULT_HSYNC_LO;

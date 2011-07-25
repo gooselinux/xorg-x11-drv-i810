@@ -1,0 +1,31 @@
+--- xf86-video-intel-20080119/src/i830_driver.c.jx	2008-01-19 18:00:00.000000000 -0500
++++ xf86-video-intel-20080119/src/i830_driver.c	2008-01-19 18:33:44.000000000 -0500
+@@ -1462,27 +1462,8 @@
+     * for example. :)
+     */
+    if (!pI830->noAccel) {
+-#ifdef I830_USE_EXA
+-       pI830->useEXA = TRUE;
+-#else
+        pI830->useEXA = FALSE;
+-#endif
+-#if defined(I830_USE_XAA) && defined(I830_USE_EXA)
+-       int from = X_DEFAULT;
+-       if ((s = (char *)xf86GetOptValString(pI830->Options,
+-					    OPTION_ACCELMETHOD))) {
+-	   if (!xf86NameCmp(s, "EXA")) {
+-	       from = X_CONFIG;
+-	       pI830->useEXA = TRUE;
+-	   }
+-	   else if (!xf86NameCmp(s, "XAA")) {
+-	       from = X_CONFIG;
+-	       pI830->useEXA = FALSE;
+-	   }
+-       }
+-#endif
+-       xf86DrvMsg(pScrn->scrnIndex, from, "Using %s for acceleration\n",
+-		  pI830->useEXA ? "EXA" : "XAA");
++       xf86DrvMsg(pScrn->scrnIndex, from, "Using XAA for acceleration\n");
+    }
+ 
+    if (xf86ReturnOptValBool(pI830->Options, OPTION_SW_CURSOR, FALSE)) {

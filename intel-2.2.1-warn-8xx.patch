@@ -1,0 +1,17 @@
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.jx xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.jx	2009-05-14 10:59:49.000000000 -0400
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2009-05-14 11:05:03.000000000 -0400
+@@ -1150,6 +1150,13 @@ I830PreInit(ScrnInfoPtr pScrn, int flags
+ 			  pI830->PciInfo->func);
+ #endif
+ 
++   if (!IS_I9XX(pI830)) {
++       xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
++          "Running on a pre-915 chip, this is not a tested configuration\n");
++       xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
++	  "The 'i810' driver is the supported driver for this chipset\n");
++   }
++
+     /* Allocate an entity private if necessary */
+     if (xf86IsEntityShared(pScrn->entityList[0])) {
+ 	pI830Ent = xf86GetEntityPrivate(pScrn->entityList[0],

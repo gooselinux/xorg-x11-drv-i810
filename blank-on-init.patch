@@ -1,0 +1,42 @@
+--- xorg-x11-drv-i810-1.6.5/xf86-video-i810-1.6.5/src/i830_driver.c.blank-on-init	2006-11-07 18:20:22.000000000 -0500
++++ xorg-x11-drv-i810-1.6.5/xf86-video-i810-1.6.5/src/i830_driver.c	2006-11-07 18:20:22.000000000 -0500
+@@ -7999,12 +7999,12 @@
+ 
+    pI830->leaving = FALSE;
+ 
+-#if 1
+-   /* Clear the framebuffer */
+-   memset(pI830->FbBase + pScrn->fbOffset, 0,
+-	  pScrn->virtualY * pScrn->displayWidth * pI830->cpp);
+-#endif
+-
++   /* Clear all of the framebuffer (just clearing the frontbuffer is not
++    * sufficient, since below we briefly set the mode to 640 x 480 which uses
++    * a different frontbuffer).
++    */
++   memset(pI830->FbBase, 0, pI830->FbMapSize);
++   
+    if (I830IsPrimary(pScrn)) {
+      /* 
+       * This is needed for restoring from ACPI modes (especially S3)
+--- xorg-x11-drv-i810-1.6.5/xf86-video-intel/src/i830_driver.c.blank-on-init	2006-11-07 18:20:58.000000000 -0500
++++ xorg-x11-drv-i810-1.6.5/xf86-video-intel/src/i830_driver.c	2006-11-07 18:21:27.000000000 -0500
+@@ -3945,12 +3945,12 @@
+ 
+    pI830->leaving = FALSE;
+ 
+-#if 1
+-   /* Clear the framebuffer */
+-   memset(pI830->FbBase + pScrn->fbOffset, 0,
+-	  pScrn->virtualY * pScrn->displayWidth * pI830->cpp);
+-#endif
+-
++   /* Clear all of the framebuffer (just clearing the frontbuffer is not
++    * sufficient, since below we briefly set the mode to 640 x 480 which uses
++    * a different frontbuffer).
++    */
++   memset(pI830->FbBase, 0, pI830->FbMapSize);
++   
+    /* Setup for device monitoring status */
+    pI830->monitorSwitch = pI830->toggleDevices = INREG(SWF0) & 0x0000FFFF;
+ 

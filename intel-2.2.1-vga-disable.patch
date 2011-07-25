@@ -1,0 +1,52 @@
+Patch from https://bugzilla.redhat.com/show_bug.cgi?id=487657#c16
+
+diff -up xf86-video-intel-2.2.1/src/i830_display.c.disable-VGA-plane-reliably xf86-video-intel-2.2.1/src/i830_display.c
+--- xf86-video-intel-2.2.1/src/i830_display.c.disable-VGA-plane-reliably	2009-02-26 15:25:04.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830_display.c	2009-04-29 18:30:08.000000000 +0100
+@@ -664,6 +664,36 @@ i830_use_fb_compression(xf86CrtcPtr crtc
+     return TRUE;
+ }
+ 
++static void
++i830_disable_vga_plane (xf86CrtcPtr crtc)
++{
++    ScrnInfoPtr pScrn = crtc->scrn;
++    I830Ptr pI830 = I830PTR(pScrn);
++    uint32_t vgacntrl = INREG(VGACNTRL);
++    uint8_t sr01;
++
++    if (vgacntrl & VGA_DISP_DISABLE)
++	return;
++
++    /*
++       Set bit 5 of SR01;
++       Wait 30us;
++       */
++    OUTREG8(SRX, 1);
++    sr01 = INREG8(SRX + 1);
++    OUTREG8(SRX + 1, sr01 | (1 << 5));
++    usleep(30);
++    /* disable center mode on 965GM and G4X platform */
++    if (IS_I965GM(pI830) || IS_G4X(pI830))
++        vgacntrl &= ~(3 << 24);
++
++    vgacntrl |= VGA_DISP_DISABLE;
++
++    OUTREG(VGACNTRL, vgacntrl);
++    i830WaitForVblank(pScrn);
++
++}
++
+ /**
+  * Sets the power management mode of the pipe and plane.
+  *
+@@ -786,8 +816,7 @@ i830_crtc_dpms(xf86CrtcPtr crtc, int mod
+ 	}
+ 
+ 	/* Disable the VGA plane that we never use. */
+-	OUTREG(VGACNTRL, VGA_DISP_DISABLE);
+-	i830WaitForVblank(pScrn);
++	i830_disable_vga_plane (crtc);
+ 
+ 	break;
+     }

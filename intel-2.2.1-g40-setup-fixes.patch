@@ -1,0 +1,70 @@
+diff -up xf86-video-intel-2.2.1/src/i810_reg.h.g40-setup xf86-video-intel-2.2.1/src/i810_reg.h
+--- xf86-video-intel-2.2.1/src/i810_reg.h.g40-setup	2009-05-13 17:10:44.000000000 -0400
++++ xf86-video-intel-2.2.1/src/i810_reg.h	2009-05-13 17:10:44.000000000 -0400
+@@ -1082,6 +1082,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ # define I965_DM_CLOCK_GATE_DISABLE		(1 << 0)
+ 
+ #define RENCLK_GATE_D2		0x6208
++#define VF_UNIT_CLOCK_GATE_DISABLE              (1 << 9)
++#define GS_UNIT_CLOCK_GATE_DISABLE              (1 << 7)
++#define CL_UNIT_CLOCK_GATE_DISABLE              (1 << 6)
+ #define RAMCLK_GATE_D		0x6210		/* CRL only */
+ 
+ /*
+diff -up xf86-video-intel-2.2.1/src/i830_crt.c.g40-setup xf86-video-intel-2.2.1/src/i830_crt.c
+--- xf86-video-intel-2.2.1/src/i830_crt.c.g40-setup	2008-02-20 16:41:25.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_crt.c	2009-05-13 17:10:44.000000000 -0400
+@@ -161,7 +161,15 @@ i830_crt_detect_hotplug(xf86OutputPtr ou
+     CARD32	temp;
+     const int	timeout_ms = 1000;
+     int		starttime, curtime;
++    int         tries = 1;
+ 
++    /* On 4 series desktop, CRT detect sequence need to be done twice
++     * to get a reliable result. */
++    if (IS_G4X(pI830) && !IS_GM45(pI830))
++        tries = 2;
++
++retry:
++	tries--; 
+     temp = INREG(PORT_HOTPLUG_EN);
+ 
+     OUTREG(PORT_HOTPLUG_EN, temp | CRT_HOTPLUG_FORCE_DETECT | (1 << 5));
+@@ -173,6 +181,8 @@ i830_crt_detect_hotplug(xf86OutputPtr ou
+ 	    break;
+     }
+ 
++    if (tries > 0)
++	goto retry;
+     if ((INREG(PORT_HOTPLUG_STAT) & CRT_HOTPLUG_MONITOR_MASK) ==
+ 	CRT_HOTPLUG_MONITOR_COLOR)
+     {
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.g40-setup xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.g40-setup	2009-05-13 17:10:44.000000000 -0400
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2009-05-13 17:10:44.000000000 -0400
+@@ -1876,8 +1876,24 @@ SetHWOperatingState(ScrnInfoPtr pScrn)
+ 
+    /* Disable clock gating reported to work incorrectly according to the specs.
+     */
+-   if (IS_I965GM(pI830) || IS_GM45(pI830)) {
++   if (IS_G4X(pI830) || IS_GM45(pI830)) {
++        uint32_t dspclk_gate;
++        OUTREG(RENCLK_GATE_D1, 0);
++        OUTREG(RENCLK_GATE_D2, VF_UNIT_CLOCK_GATE_DISABLE |
++                GS_UNIT_CLOCK_GATE_DISABLE |
++                CL_UNIT_CLOCK_GATE_DISABLE);
++        OUTREG(RAMCLK_GATE_D, 0);
++        dspclk_gate = VRHUNIT_CLOCK_GATE_DISABLE |
++            OVRUNIT_CLOCK_GATE_DISABLE |
++            OVCUNIT_CLOCK_GATE_DISABLE;
++        if (IS_GM45(pI830))
++            dspclk_gate |= DSSUNIT_CLOCK_GATE_DISABLE;
++        OUTREG(DSPCLK_GATE_D, dspclk_gate);
++   } else if (IS_I965GM(pI830)) {
+       OUTREG(RENCLK_GATE_D1, I965_RCC_CLOCK_GATE_DISABLE);
++        OUTREG(RENCLK_GATE_D2, 0);
++        OUTREG(DSPCLK_GATE_D, 0);
++        OUTREG(RAMCLK_GATE_D, 0);
+    } else if (IS_I965G(pI830)) {
+       OUTREG(RENCLK_GATE_D1,
+ 	     I965_RCC_CLOCK_GATE_DISABLE | I965_ISC_CLOCK_GATE_DISABLE);

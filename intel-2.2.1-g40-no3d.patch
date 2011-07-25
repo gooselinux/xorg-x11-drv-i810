@@ -1,0 +1,13 @@
+diff -up xf86-video-intel-2.2.1/src/i830_dri.c.g40no3d xf86-video-intel-2.2.1/src/i830_dri.c
+--- xf86-video-intel-2.2.1/src/i830_dri.c.g40no3d	2010-02-15 13:45:30.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_dri.c	2010-02-15 13:45:52.000000000 -0500
+@@ -539,6 +539,9 @@ I830DRIScreenInit(ScreenPtr pScreen)
+    else
+       pDRIInfo->clientDriverName = "i915";
+ 
++   if (IS_G4X(pI830) || IS_GM45(pI830) || IS_IGDNG(pI830))
++        pDRIInfo->clientDriverName = "";
++
+    if (xf86LoaderCheckSymbol("DRICreatePCIBusID")) {
+       pDRIInfo->busIdString = DRICreatePCIBusID(pI830->PciInfo);
+    } else {

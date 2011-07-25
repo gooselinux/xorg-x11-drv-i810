@@ -1,0 +1,62 @@
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.jx xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.jx	2010-02-12 16:23:03.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2010-02-15 11:04:34.000000000 -0500
+@@ -1775,6 +1775,25 @@ I830PreInit(ScrnInfoPtr pScrn, int flags
+       xf86LoaderReqSymLists(I810ramdacSymbols, NULL);
+    }
+ 
++   /* console hack, stolen from G80 */
++   if (IS_IGDNG(pI830)) {
++       pI830->int10 = xf86InitInt10(pEnt->index);
++       if (pI830->int10) {
++	   pI830->int10->num = 0x10;
++	   pI830->int10->ax = 0x4f03;
++	   pI830->int10->bx =
++	   pI830->int10->cx =
++	   pI830->int10->dx = 0;
++	   xf86ExecX86int10(pI830->int10);
++	   pI830->int10Mode = pI830->int10->bx & 0x3fff;
++	   xf86DrvMsg(pScrn->scrnIndex, X_PROBED,
++		      "Console VGA mode is 0x%x\n", pI830->int10Mode);
++       } else {
++	   xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
++		      "Failed int10 setup, VT switch won't work\n");
++       }
++   }
++
+    i830CompareRegsToSnapshot(pScrn, "After PreInit");
+ 
+    I830UnmapMMIO(pScrn);
+@@ -2346,6 +2365,18 @@ RestoreHWState(ScrnInfoPtr pScrn)
+    OUTREG(PIPEASTAT, INREG(PIPEASTAT) | FIFO_UNDERRUN);
+    OUTREG(PIPEBSTAT, INREG(PIPEBSTAT) | FIFO_UNDERRUN);
+ 
++   /* console restore hack */
++   if (IS_IGDNG(pI830) && pI830->int10 && pI830->int10Mode) {
++       xf86Int10InfoPtr int10 = pI830->int10;
++
++       /* Use int10 to restore the console mode */
++       int10->num = 0x10;
++       int10->ax = 0x4f02;
++       int10->bx = pI830->int10Mode | 0x8000;
++       int10->cx = int10->dx = 0;
++       xf86ExecX86int10(int10);
++   }
++
+    vgaHWRestore(pScrn, vgaReg, VGA_SR_FONTS);
+    vgaHWLock(hwp);
+ 
+diff -up xf86-video-intel-2.2.1/src/i830.h.jx xf86-video-intel-2.2.1/src/i830.h
+--- xf86-video-intel-2.2.1/src/i830.h.jx	2010-02-12 16:23:03.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830.h	2010-02-15 11:04:36.000000000 -0500
+@@ -636,6 +636,10 @@ typedef struct _I830Rec {
+    /** Enables logging of debug output related to mode switching. */
+    Bool debug_modes;
+    unsigned int quirk_flag;
++
++   /* ironlake vt restore hack */
++   xf86Int10InfoPtr int10;
++   int int10Mode;
+ } I830Rec;
+ 
+ #define I830PTR(p) ((I830Ptr)((p)->driverPrivate))

@@ -1,0 +1,1524 @@
+diff -up xf86-video-intel-2.2.1/src/i810_driver.c.jx xf86-video-intel-2.2.1/src/i810_driver.c
+--- xf86-video-intel-2.2.1/src/i810_driver.c.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i810_driver.c	2009-12-18 15:15:50.000000000 -0500
+@@ -822,6 +822,8 @@ I810Probe(DriverPtr drv, int flags)
+ 	    case PCI_CHIP_G45_G:
+ 	    case PCI_CHIP_Q45_G:
+ 	    case PCI_CHIP_G41_G:
++	    case PCI_CHIP_IGDNG_D_G:
++	    case PCI_CHIP_IGDNG_M_G:
+     	       xf86SetEntitySharable(usedChips[i]);
+ 
+     	       /* Allocate an entity private if necessary */		
+--- xf86-video-intel-2.2.1/src/i810_reg.h.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i810_reg.h	2009-12-18 15:15:50.000000000 -0500
+@@ -2173,6 +2173,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ /* IGDNG */
+ #define DISPPLANE_X_TILE			(1<<10)
+ #define DISPPLANE_LINEAR			(0<<10)
++#define DISPPLANE_TRICKLE_FEED_DISABLE		(1<<14)
+ 
+ #define DSPABASE		0x70184
+ /* IGDNG */
+@@ -2873,6 +2874,15 @@ typedef enum {
+ #define PFA_CTRL_1		0x68080
+ #define PFB_CTRL_1		0x68880
+ 
++/* CPU panel fitter */
++#define PFA_CTL_1               0x68080
++#define PFB_CTL_1               0x68880
++#define  PF_ENABLE              (1<<31)
++#define PFA_WIN_SZ		0x68074
++#define PFB_WIN_SZ		0x68874
++#define PFA_WIN_POS		0x68070
++#define PFB_WIN_POS		0x68870
++
+ /* legacy palette */
+ #define LGC_PALETTE_A		0x4a000
+ #define LGC_PALETTE_B		0x4a800
+@@ -2918,6 +2928,9 @@ typedef enum {
+ #define GTIIR	0x44018
+ #define GTIER	0x4401c
+ 
++#define DISP_ARB_CTL    0x45000
++#define  DISP_TILE_SURFACE_SWIZZLING    (1<<13)
++
+ /* PCH */
+ 
+ /* south display engine interrupt */
+@@ -2982,23 +2995,27 @@ typedef enum {
+ 
+ #define PCH_DPLL_TEST		0xc606c
+ 
+-#define PCH_DREF_CONTROL	0xC6200
+-#define  DREF_CONTROL_MASK	0x7fc3
+-#define  DREF_CPU_SOURCE_OUTPUT_DISABLE		(0<<13)
+-#define  DREF_CPU_SOURCE_OUTPUT_DOWNSPREAD	(2<<13)
+-#define  DREF_CPU_SOURCE_OUTPUT_NONSPREAD	(3<<13)
+-#define  DREF_SSC_SOURCE_DISABLE		(0<<11)
+-#define  DREF_SSC_SOURCE_ENABLE			(2<<11)
+-#define  DREF_NONSPREAD_SOURCE_DISABLE		(0<<9)
+-#define  DREF_NONSPREAD_SOURCE_ENABLE		(2<<9)
+-#define  DREF_SUPERSPREAD_SOURCE_DISABLE	(0<<7)
+-#define  DREF_SUPERSPREAD_SOURCE_ENABLE		(2<<7)
+-#define  DREF_SSC4_DOWNSPREAD			(0<<6)
+-#define  DREF_SSC4_CENTERSPREAD			(1<<6)
+-#define  DREF_SSC1_DISABLE			(0<<1)
+-#define  DREF_SSC1_ENABLE			(1<<1)
+-#define  DREF_SSC4_DISABLE			(0)
+-#define  DREF_SSC4_ENABLE			(1)
++#define PCH_DREF_CONTROL        0xC6200
++#define  DREF_CONTROL_MASK      0x7fc3
++#define  DREF_CPU_SOURCE_OUTPUT_DISABLE         (0<<13)
++#define  DREF_CPU_SOURCE_OUTPUT_DOWNSPREAD      (2<<13)
++#define  DREF_CPU_SOURCE_OUTPUT_NONSPREAD       (3<<13)
++#define  DREF_CPU_SOURCE_OUTPUT_MASK		(3<<13)
++#define  DREF_SSC_SOURCE_DISABLE                (0<<11)
++#define  DREF_SSC_SOURCE_ENABLE                 (2<<11)
++#define  DREF_SSC_SOURCE_MASK			(2<<11)
++#define  DREF_NONSPREAD_SOURCE_DISABLE          (0<<9)
++#define  DREF_NONSPREAD_CK505_ENABLE		(1<<9)
++#define  DREF_NONSPREAD_SOURCE_ENABLE           (2<<9)
++#define  DREF_NONSPREAD_SOURCE_MASK		(2<<9)
++#define  DREF_SUPERSPREAD_SOURCE_DISABLE        (0<<7)
++#define  DREF_SUPERSPREAD_SOURCE_ENABLE         (2<<7)
++#define  DREF_SSC4_DOWNSPREAD                   (0<<6)
++#define  DREF_SSC4_CENTERSPREAD                 (1<<6)
++#define  DREF_SSC1_DISABLE                      (0<<1)
++#define  DREF_SSC1_ENABLE                       (1<<1)
++#define  DREF_SSC4_DISABLE                      (0)
++#define  DREF_SSC4_ENABLE                       (1)
+ 
+ #define PCH_RAWCLK_FREQ		0xc6204
+ #define  FDL_TP1_TIMER_SHIFT	12
+@@ -3206,4 +3223,34 @@ typedef enum {
+ #define HDMIC	0xe1150
+ #define HDMID	0xe1160
+ 
++#define PCH_LVDS 0xe1180
++#define   LVDS_DETECTED (1 << 1)
++
++#define BLC_PWM_CPU_CTL2	0x48250
++#define  PWM_ENABLE		(1 << 31)
++#define  PWM_PIPE_A		(0 << 29)
++#define  PWM_PIPE_B		(1 << 29)
++#define BLC_PWM_CPU_CTL		0x48254
++
++#define BLC_PWM_PCH_CTL1	0xc8250
++#define  PWM_PCH_ENABLE		(1 << 31)
++#define  PWM_POLARITY_ACTIVE_LOW	(1 << 29)
++#define  PWM_POLARITY_ACTIVE_HIGH	(0 << 29)
++#define  PWM_POLARITY_ACTIVE_LOW2	(1 << 28)
++#define  PWM_POLARITY_ACTIVE_HIGH2	(0 << 28)
++
++#define BLC_PWM_PCH_CTL2	0xc8254
++
++#define PCH_PP_STATUS		0xc7200
++#define PCH_PP_CONTROL		0xc7204
++#define  EDP_FORCE_VDD		(1 << 3)
++#define  EDP_BLC_ENABLE		(1 << 2)
++#define  PANEL_POWER_RESET	(1 << 1)
++#define  PANEL_POWER_OFF	(0 << 0)
++#define  PANEL_POWER_ON		(1 << 0)
++#define PCH_PP_ON_DELAYS	0xc7208
++#define  EDP_PANEL		(1 << 30)
++#define PCH_PP_OFF_DELAYS	0xc720c
++#define PCH_PP_DIVISOR		0xc7210
++
+ #endif /* _I810_REG_H */
+--- xf86-video-intel-2.2.1/src/i830_crt.c.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_crt.c	2009-12-18 15:15:50.000000000 -0500
+@@ -29,6 +29,8 @@
+ #include "config.h"
+ #endif
+ 
++#include <unistd.h>
++
+ #include "xf86.h"
+ #include "i830.h"
+ #include "xf86Modes.h"
+@@ -39,9 +41,14 @@ i830_crt_dpms(xf86OutputPtr output, int 
+ {
+     ScrnInfoPtr	    pScrn = output->scrn;
+     I830Ptr	    pI830 = I830PTR(pScrn);
+-    CARD32	    temp;
++    CARD32	    temp, reg;
++
++    if (IS_IGDNG(pI830))
++	reg = PCH_ADPA;
++    else
++	reg = ADPA;
+ 
+-    temp = INREG(ADPA);
++    temp = INREG(reg);
+     temp &= ~(ADPA_HSYNC_CNTL_DISABLE | ADPA_VSYNC_CNTL_DISABLE);
+     temp &= ~ADPA_DAC_ENABLE;
+ 
+@@ -60,7 +67,7 @@ i830_crt_dpms(xf86OutputPtr output, int 
+ 	break;
+     }
+ 
+-    OUTREG(ADPA, temp);
++    OUTREG(reg, temp);
+ }
+ 
+ static void
+@@ -110,16 +117,23 @@ i830_crt_mode_set(xf86OutputPtr output, 
+     I830CrtcPrivatePtr	    i830_crtc = crtc->driver_private;
+     int			    dpll_md_reg;
+     CARD32		    adpa, dpll_md;
++    CARD32		    adpa_reg;
+ 
+     if (i830_crtc->pipe == 0) 
+ 	dpll_md_reg = DPLL_A_MD;
+     else
+ 	dpll_md_reg = DPLL_B_MD;
++
++    if (IS_IGDNG(pI830))
++	adpa_reg = PCH_ADPA;
++    else
++	adpa_reg = ADPA;
++
+     /*
+      * Disable separate mode multiplier used when cloning SDVO to CRT
+      * XXX this needs to be adjusted when we really are cloning
+      */
+-    if (IS_I965G(pI830))
++    if (IS_I965G(pI830) && !IS_IGDNG(pI830))
+     {
+ 	dpll_md = INREG(dpll_md_reg);
+ 	OUTREG(dpll_md_reg, dpll_md & ~DPLL_MD_UDI_MULTIPLIER_MASK);
+@@ -134,15 +148,53 @@ i830_crt_mode_set(xf86OutputPtr output, 
+     if (i830_crtc->pipe == 0)
+     {
+ 	adpa |= ADPA_PIPE_A_SELECT;
+-	OUTREG(BCLRPAT_A, 0);
++	if (!IS_IGDNG(pI830))
++	    OUTREG(BCLRPAT_A, 0);
+     }
+     else
+     {
+ 	adpa |= ADPA_PIPE_B_SELECT;
+-	OUTREG(BCLRPAT_B, 0);
++	if (!IS_IGDNG(pI830))
++	    OUTREG(BCLRPAT_B, 0);
+     }
+ 
+-    OUTREG(ADPA, adpa);
++    OUTREG(adpa_reg, adpa);
++}
++
++static Bool intel_igdng_crt_detect_hotplug(xf86OutputPtr output)
++{
++    ScrnInfoPtr	pScrn = output->scrn;
++    I830Ptr	pI830 = I830PTR(pScrn);
++    CARD32 adpa;
++    Bool ret;
++
++    adpa = INREG(PCH_ADPA);
++
++    adpa &= ~ADPA_CRT_HOTPLUG_MASK;
++
++    adpa |= (ADPA_CRT_HOTPLUG_PERIOD_128 |
++	     ADPA_CRT_HOTPLUG_WARMUP_10MS |
++	     ADPA_CRT_HOTPLUG_SAMPLE_4S |
++	     ADPA_CRT_HOTPLUG_VOLTAGE_50 | /* default */
++	     ADPA_CRT_HOTPLUG_VOLREF_325MV |
++	     ADPA_CRT_HOTPLUG_ENABLE |
++	     ADPA_CRT_HOTPLUG_FORCE_TRIGGER);
++
++    OUTREG(PCH_ADPA, adpa);
++
++    while (adpa = INREG(PCH_ADPA),
++	   (adpa & ADPA_CRT_HOTPLUG_FORCE_TRIGGER) != 0)
++      ;
++
++    /* Check the status to see if both blue and green are on now */
++    adpa = INREG(PCH_ADPA) & ADPA_CRT_HOTPLUG_MONITOR_MASK;
++    if (adpa == ADPA_CRT_HOTPLUG_MONITOR_COLOR ||
++	adpa ==	ADPA_CRT_HOTPLUG_MONITOR_MONO)
++	ret = TRUE;
++    else
++	ret = FALSE;
++
++    return ret;
+ }
+ 
+ /**
+@@ -163,6 +215,9 @@ i830_crt_detect_hotplug(xf86OutputPtr ou
+     int		starttime, curtime;
+     int         tries = 1;
+ 
++    if (IS_IGDNG(pI830))
++	return intel_igdng_crt_detect_hotplug(output);
++
+     /* On 4 series desktop, CRT detect sequence need to be done twice
+      * to get a reliable result. */
+     if (IS_G4X(pI830) && !IS_GM45(pI830))
+@@ -368,10 +423,8 @@ i830_crt_detect(xf86OutputPtr output)
+     xf86OutputStatus	    status;
+     Bool		    connected;
+ 
+-    crtc = i830GetLoadDetectPipe (output, NULL, &dpms_mode);
+-
+-    if (crtc && (IS_I945G(pI830) || IS_I945GM(pI830) || IS_I965G(pI830) ||
+-	    IS_G33CLASS(pI830))) {
++    if (IS_I945G(pI830) || IS_I945GM(pI830) || IS_I965G(pI830) ||
++	IS_G33CLASS(pI830)) {
+ 	if (i830_crt_detect_hotplug(output))
+ 	    status = XF86OutputStatusConnected;
+ 	else
+@@ -385,6 +438,8 @@ i830_crt_detect(xf86OutputPtr output)
+ 	goto out;
+     }
+ 
++    crtc = i830GetLoadDetectPipe (output, NULL, &dpms_mode);
++
+     if (!crtc)
+ 	return XF86OutputStatusUnknown;
+ 
+@@ -395,10 +450,9 @@ i830_crt_detect(xf86OutputPtr output)
+     else
+ 	status = XF86OutputStatusDisconnected;
+ 
+-out:
+-    if (crtc)
+-	i830ReleaseLoadDetectPipe (output, dpms_mode);
++    i830ReleaseLoadDetectPipe (output, dpms_mode);
+ 
++ out:
+     return status;
+ }
+ 
+@@ -429,6 +483,7 @@ i830_crt_init(ScrnInfoPtr pScrn)
+     xf86OutputPtr	    output;
+     I830OutputPrivatePtr    i830_output;
+     I830Ptr		    pI830 = I830PTR(pScrn);
++    CARD32		    i2c_reg;
+ 
+     output = xf86OutputCreate (pScrn, &i830_crt_output_funcs, "VGA");
+     if (!output)
+@@ -453,5 +508,9 @@ i830_crt_init(ScrnInfoPtr pScrn)
+     output->doubleScanAllowed = FALSE;
+ 
+     /* Set up the DDC bus. */
+-    I830I2CInit(pScrn, &i830_output->pDDCBus, GPIOA, "CRTDDC_A");
++    if (IS_IGDNG(pI830))
++	i2c_reg = PCH_GPIOA;
++    else
++	i2c_reg = GPIOA;
++    I830I2CInit(pScrn, &i830_output->pDDCBus, i2c_reg, "CRTDDC_A");
+ }
+--- xf86-video-intel-2.2.1/src/i830_display.c.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_display.c	2009-12-18 15:17:08.000000000 -0500
+@@ -42,6 +42,7 @@
+ #include "i830_display.h"
+ #include "i830_debug.h"
+ #include "xf86Modes.h"
++#include "i810_reg.h"
+ 
+ typedef struct {
+     /* given values */    
+@@ -132,6 +133,30 @@ typedef struct {
+ #define I9XX_P2_LVDS_FAST		      7
+ #define I9XX_P2_LVDS_SLOW_LIMIT		 112000
+ 
++#define IGDNG_DOT_MIN         25000
++#define IGDNG_DOT_MAX         350000
++#define IGDNG_VCO_MIN         1760000
++#define IGDNG_VCO_MAX         3510000
++#define IGDNG_N_MIN           1
++#define IGDNG_N_MAX           5
++#define IGDNG_M_MIN           79
++#define IGDNG_M_MAX           118
++#define IGDNG_M1_MIN          12
++#define IGDNG_M1_MAX          23
++#define IGDNG_M2_MIN          5
++#define IGDNG_M2_MAX          9
++#define IGDNG_P_SDVO_DAC_MIN  5
++#define IGDNG_P_SDVO_DAC_MAX  80
++#define IGDNG_P_LVDS_MIN      28
++#define IGDNG_P_LVDS_MAX      112
++#define IGDNG_P1_MIN          1
++#define IGDNG_P1_MAX          8
++#define IGDNG_P2_SDVO_DAC_SLOW 10
++#define IGDNG_P2_SDVO_DAC_FAST 5
++#define IGDNG_P2_LVDS_SLOW    14 /* single channel */
++#define IGDNG_P2_LVDS_FAST    7  /* double channel */
++#define IGDNG_P2_DOT_LIMIT    225000 /* 225Mhz */
++
+ #define INTEL_LIMIT_I8XX_DVO_DAC    0
+ #define INTEL_LIMIT_I8XX_LVDS	    1
+ #define INTEL_LIMIT_I9XX_SDVO_DAC   2
+@@ -191,13 +216,55 @@ static const intel_limit_t intel_limits[
+     },
+ };
+ 
++static const intel_limit_t intel_limits_igdng_sdvo_dac = {
++    .dot = { .min = IGDNG_DOT_MIN,          .max = IGDNG_DOT_MAX },
++    .vco = { .min = IGDNG_VCO_MIN,          .max = IGDNG_VCO_MAX },
++    .n   = { .min = IGDNG_N_MIN,            .max = IGDNG_N_MAX },
++    .m   = { .min = IGDNG_M_MIN,            .max = IGDNG_M_MAX },
++    .m1  = { .min = IGDNG_M1_MIN,           .max = IGDNG_M1_MAX },
++    .m2  = { .min = IGDNG_M2_MIN,           .max = IGDNG_M2_MAX },
++    .p   = { .min = IGDNG_P_SDVO_DAC_MIN,   .max = IGDNG_P_SDVO_DAC_MAX },
++    .p1  = { .min = IGDNG_P1_MIN,           .max = IGDNG_P1_MAX },
++    .p2  = { .dot_limit = IGDNG_P2_DOT_LIMIT,
++	     .p2_slow = IGDNG_P2_SDVO_DAC_SLOW,
++	     .p2_fast = IGDNG_P2_SDVO_DAC_FAST },
++};
++
++static const intel_limit_t intel_limits_igdng_lvds = {
++    .dot = { .min = IGDNG_DOT_MIN,          .max = IGDNG_DOT_MAX },
++    .vco = { .min = IGDNG_VCO_MIN,          .max = IGDNG_VCO_MAX },
++    .n   = { .min = IGDNG_N_MIN,            .max = IGDNG_N_MAX },
++    .m   = { .min = IGDNG_M_MIN,            .max = IGDNG_M_MAX },
++    .m1  = { .min = IGDNG_M1_MIN,           .max = IGDNG_M1_MAX },
++    .m2  = { .min = IGDNG_M2_MIN,           .max = IGDNG_M2_MAX },
++    .p   = { .min = IGDNG_P_LVDS_MIN,       .max = IGDNG_P_LVDS_MAX },
++    .p1  = { .min = IGDNG_P1_MIN,           .max = IGDNG_P1_MAX },
++    .p2  = { .dot_limit = IGDNG_P2_DOT_LIMIT,
++	     .p2_slow = IGDNG_P2_LVDS_SLOW,
++	     .p2_fast = IGDNG_P2_LVDS_FAST },
++};
++
++static const intel_limit_t *intel_igdng_limit(xf86CrtcPtr crtc)
++{
++    const intel_limit_t *limit;
++    if (i830PipeHasType(crtc, I830_OUTPUT_LVDS))
++	limit = &intel_limits_igdng_lvds;
++    else
++	limit = &intel_limits_igdng_sdvo_dac;
++
++    return limit;
++}
++
++
+ static const intel_limit_t *intel_limit (xf86CrtcPtr crtc)
+ {
+     ScrnInfoPtr	pScrn = crtc->scrn;
+     I830Ptr	pI830 = I830PTR(pScrn);
+     const intel_limit_t *limit;
+ 
+-    if (IS_I9XX(pI830)) {
++    if (IS_IGDNG(pI830))
++	limit = intel_igdng_limit(crtc);
++    else if (IS_I9XX(pI830)) {
+ 	if (i830PipeHasType (crtc, I830_OUTPUT_LVDS))
+ 	    limit = &intel_limits[INTEL_LIMIT_I9XX_LVDS];
+ 	else
+@@ -309,6 +376,60 @@ i830PllIsValid(xf86CrtcPtr crtc, intel_c
+     return TRUE;
+ }
+ 
++
++static Bool
++intel_igdng_find_best_PLL(const intel_limit_t *limit, xf86CrtcPtr crtc,
++			  int target, int refclk, intel_clock_t *best_clock)
++{
++    ScrnInfoPtr pScrn = crtc->scrn;
++    I830Ptr pI830 = I830PTR(pScrn);
++    intel_clock_t clock;
++    int err_most = 47;
++    int err_min = 10000;
++
++    if (i830PipeHasType(crtc, I830_OUTPUT_LVDS)) {
++	if ((INREG(PCH_LVDS) & LVDS_CLKB_POWER_MASK) == LVDS_CLKB_POWER_UP)
++	    clock.p2 = limit->p2.p2_fast;
++	else
++	    clock.p2 = limit->p2.p2_slow;
++    } else {
++	if (target < limit->p2.dot_limit)
++	    clock.p2 = limit->p2.p2_slow;
++	else
++	    clock.p2 = limit->p2.p2_fast;
++    }
++
++    memset(best_clock, 0, sizeof(*best_clock));
++    for (clock.p1 = limit->p1.max; clock.p1 >= limit->p1.min; clock.p1--) {
++	/* based on hardware requriment prefer smaller n to precision */
++	for (clock.n = limit->n.min; clock.n <= limit->n.max; clock.n++) {
++	    /* based on hardware requirment prefere larger m1,m2 */
++	    for (clock.m1 = limit->m1.max;
++		 clock.m1 >= limit->m1.min; clock.m1--) {
++		for (clock.m2 = limit->m2.max;
++		     clock.m2 >= limit->m2.min; clock.m2--) {
++		    int this_err;
++
++		    intel_clock(pI830, refclk, &clock);
++		    if (!i830PllIsValid(crtc, &clock))
++			continue;
++		    this_err = abs((10000 - (target*10000/clock.dot)));
++		    if (this_err < err_most) {
++			*best_clock = clock;
++			/* found on first matching */
++			goto out;
++		    } else if (this_err < err_min) {
++			*best_clock = clock;
++			err_min = this_err;
++		    }
++		}
++	    }
++	}
++    }
++ out:
++    return TRUE;
++}
++
+ /**
+  * Returns a set of divisors for the desired target clock with the given
+  * refclk, or FALSE.  The returned values represent the clock equation:
+@@ -323,6 +444,10 @@ i830FindBestPLL(xf86CrtcPtr crtc, int ta
+     const intel_limit_t   *limit = intel_limit (crtc);
+     int err = target;
+ 
++    if (IS_IGDNG(pI830))
++	return intel_igdng_find_best_PLL(limit, crtc,
++					 target, refclk, best_clock);
++
+     if (i830PipeHasType(crtc, I830_OUTPUT_LVDS))
+     {
+ 	/* For LVDS, if the panel is on, just rely on its current settings for
+@@ -670,6 +795,16 @@ i830_disable_vga_plane (xf86CrtcPtr crtc
+     ScrnInfoPtr pScrn = crtc->scrn;
+     I830Ptr pI830 = I830PTR(pScrn);
+     uint8_t sr01;
++    uint32_t vga_reg, vgacntrl;
++
++    if (IS_IGDNG(pI830))
++	vga_reg = CPU_VGACNTRL;
++    else
++	vga_reg = VGACNTRL;
++
++    vgacntrl = INREG(vga_reg);
++    if (vgacntrl & VGA_DISP_DISABLE)
++	return;
+ 
+     /* 
+      * Bug #17235: G4X machine needs following steps
+@@ -686,7 +821,8 @@ i830_disable_vga_plane (xf86CrtcPtr crtc
+ 	usleep(30);
+     }
+ 
+-    OUTREG(VGACNTRL, VGA_DISP_DISABLE);
++    vgacntrl |= VGA_DISP_DISABLE;
++    OUTREG(vga_reg, vgacntrl);
+     i830WaitForVblank(pScrn);
+ 
+     /* restore SR01 */
+@@ -696,6 +832,323 @@ i830_disable_vga_plane (xf86CrtcPtr crtc
+     }
+ }
+ 
++static void igdng_crtc_dpms(xf86CrtcPtr crtc, int mode)
++{
++    ScrnInfoPtr pScrn = crtc->scrn;
++    I830Ptr pI830 = I830PTR(pScrn);
++    I830CrtcPrivatePtr intel_crtc = crtc->driver_private;
++    int pipe = intel_crtc->pipe;
++    int plane = intel_crtc->plane;
++    int pch_dpll_reg = (pipe == 0) ? PCH_DPLL_A : PCH_DPLL_B;
++    int pipeconf_reg = (pipe == 0) ? PIPEACONF : PIPEBCONF;
++    int dspcntr_reg = (plane == 0) ? DSPACNTR : DSPBCNTR;
++    int dspbase_reg = (plane == 0) ? DSPABASE : DSPBBASE;
++    int fdi_tx_reg = (pipe == 0) ? FDI_TXA_CTL : FDI_TXB_CTL;
++    int fdi_rx_reg = (pipe == 0) ? FDI_RXA_CTL : FDI_RXB_CTL;
++    int fdi_rx_iir_reg = (pipe == 0) ? FDI_RXA_IIR : FDI_RXB_IIR;
++    int fdi_rx_imr_reg = (pipe == 0) ? FDI_RXA_IMR : FDI_RXB_IMR;
++    int transconf_reg = (pipe == 0) ? TRANSACONF : TRANSBCONF;
++    int pf_ctl_reg = (pipe == 0) ? PFA_CTL_1 : PFB_CTL_1;
++    int pf_win_size = (pipe == 0) ? PFA_WIN_SZ : PFB_WIN_SZ;
++    int pf_win_pos = (pipe == 0) ? PFA_WIN_POS : PFB_WIN_POS;
++    int cpu_htot_reg = (pipe == 0) ? HTOTAL_A : HTOTAL_B;
++    int cpu_hblank_reg = (pipe == 0) ? HBLANK_A : HBLANK_B;
++    int cpu_hsync_reg = (pipe == 0) ? HSYNC_A : HSYNC_B;
++    int cpu_vtot_reg = (pipe == 0) ? VTOTAL_A : VTOTAL_B;
++    int cpu_vblank_reg = (pipe == 0) ? VBLANK_A : VBLANK_B;
++    int cpu_vsync_reg = (pipe == 0) ? VSYNC_A : VSYNC_B;
++    int trans_htot_reg = (pipe == 0) ? TRANS_HTOTAL_A : TRANS_HTOTAL_B;
++    int trans_hblank_reg = (pipe == 0) ? TRANS_HBLANK_A : TRANS_HBLANK_B;
++    int trans_hsync_reg = (pipe == 0) ? TRANS_HSYNC_A : TRANS_HSYNC_B;
++    int trans_vtot_reg = (pipe == 0) ? TRANS_VTOTAL_A : TRANS_VTOTAL_B;
++    int trans_vblank_reg = (pipe == 0) ? TRANS_VBLANK_A : TRANS_VBLANK_B;
++    int trans_vsync_reg = (pipe == 0) ? TRANS_VSYNC_A : TRANS_VSYNC_B;
++    CARD32 temp;
++    int tries = 5, j, n;
++
++    /* XXX: When our outputs are all unaware of DPMS modes other than off
++     * and on, we should map those modes to DRM_MODE_DPMS_OFF in the CRTC.
++     */
++    switch (mode) {
++    case DPMSModeOn:
++    case DPMSModeStandby:
++    case DPMSModeSuspend:
++
++	/* enable PCH DPLL */
++	temp = INREG(pch_dpll_reg);
++	if ((temp & DPLL_VCO_ENABLE) == 0) {
++	    OUTREG(pch_dpll_reg, temp | DPLL_VCO_ENABLE);
++	    INREG(pch_dpll_reg);
++	}
++
++	/* enable PCH FDI RX PLL, wait warmup plus DMI latency */
++	temp = INREG(fdi_rx_reg);
++	OUTREG(fdi_rx_reg, temp | FDI_RX_PLL_ENABLE |
++	       FDI_SEL_PCDCLK |
++	       FDI_DP_PORT_WIDTH_X4); /* default 4 lanes */
++	INREG(fdi_rx_reg);
++	usleep(200);
++
++	/* Enable CPU FDI TX PLL, always on for IGDNG */
++	temp = INREG(fdi_tx_reg);
++	if ((temp & FDI_TX_PLL_ENABLE) == 0) {
++	    OUTREG(fdi_tx_reg, temp | FDI_TX_PLL_ENABLE);
++	    INREG(fdi_tx_reg);
++	    usleep(100);
++	}
++
++	/* Enable panel fitting for LVDS */
++	if (i830PipeHasType(crtc, I830_OUTPUT_LVDS)) {
++	    temp = INREG(pf_ctl_reg);
++	    OUTREG(pf_ctl_reg, temp | PF_ENABLE);
++
++	    /* currently full aspect */
++	    OUTREG(pf_win_pos, 0);
++
++	    OUTREG(pf_win_size,
++		   (1680 << 16) |
++		   (1050));
++	}
++
++
++	/* Enable CPU pipe */
++	temp = INREG(pipeconf_reg);
++	if ((temp & PIPEACONF_ENABLE) == 0) {
++	    OUTREG(pipeconf_reg, temp | PIPEACONF_ENABLE);
++	    INREG(pipeconf_reg);
++	    usleep(100);
++	}
++
++	/* configure and enable CPU plane */
++	temp = INREG(dspcntr_reg);
++	if ((temp & DISPLAY_PLANE_ENABLE) == 0) {
++	    OUTREG(dspcntr_reg, temp | DISPLAY_PLANE_ENABLE);
++	    /* Flush the plane changes */
++	    OUTREG(dspbase_reg, INREG(dspbase_reg));
++	}
++
++	/* enable CPU FDI TX and PCH FDI RX */
++	temp = INREG(fdi_tx_reg);
++	temp |= FDI_TX_ENABLE;
++	temp |= FDI_DP_PORT_WIDTH_X4; /* default */
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	temp |= FDI_LINK_TRAIN_PATTERN_1;
++	OUTREG(fdi_tx_reg, temp);
++	INREG(fdi_tx_reg);
++
++	temp = INREG(fdi_rx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	temp |= FDI_LINK_TRAIN_PATTERN_1;
++	OUTREG(fdi_rx_reg, temp | FDI_RX_ENABLE);
++	INREG(fdi_rx_reg);
++
++	usleep(150);
++
++	/* Train FDI. */
++	/* umask FDI RX Interrupt symbol_lock and bit_lock bit
++	   for train result */
++	temp = INREG(fdi_rx_imr_reg);
++	temp &= ~FDI_RX_SYMBOL_LOCK;
++	temp &= ~FDI_RX_BIT_LOCK;
++	OUTREG(fdi_rx_imr_reg, temp);
++	INREG(fdi_rx_imr_reg);
++	usleep(150);
++
++	temp = INREG(fdi_rx_iir_reg);
++
++	if ((temp & FDI_RX_BIT_LOCK) == 0) {
++	    for (j = 0; j < tries; j++) {
++		temp = INREG(fdi_rx_iir_reg);
++		if (temp & FDI_RX_BIT_LOCK)
++		    break;
++		usleep(200);
++	    }
++	    if (j != tries)
++		OUTREG(fdi_rx_iir_reg, temp | FDI_RX_BIT_LOCK);
++	    else
++		xf86DrvMsg(pScrn->scrnIndex, X_WARNING, "train 1 failed\n");
++	} else {
++	    OUTREG(fdi_rx_iir_reg, temp | FDI_RX_BIT_LOCK);
++	}
++	temp = INREG(fdi_tx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	temp |= FDI_LINK_TRAIN_PATTERN_2;
++	OUTREG(fdi_tx_reg, temp);
++
++	temp = INREG(fdi_rx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	temp |= FDI_LINK_TRAIN_PATTERN_2;
++	OUTREG(fdi_rx_reg, temp);
++
++	usleep(150);
++
++	temp = INREG(fdi_rx_iir_reg);
++
++	if ((temp & FDI_RX_SYMBOL_LOCK) == 0) {
++	    for (j = 0; j < tries; j++) {
++		temp = INREG(fdi_rx_iir_reg);
++		if (temp & FDI_RX_SYMBOL_LOCK)
++		    break;
++		usleep(200);
++	    }
++	    if (j != tries)
++		OUTREG(fdi_rx_iir_reg,
++			   temp | FDI_RX_SYMBOL_LOCK);
++	    else
++		xf86DrvMsg(pScrn->scrnIndex, X_WARNING, "train 2 failed\n");
++
++	} else {
++	    OUTREG(fdi_rx_iir_reg,
++		   temp | FDI_RX_SYMBOL_LOCK);
++	}
++
++	/* set transcoder timing */
++	OUTREG(trans_htot_reg, INREG(cpu_htot_reg));
++	OUTREG(trans_hblank_reg, INREG(cpu_hblank_reg));
++	OUTREG(trans_hsync_reg, INREG(cpu_hsync_reg));
++
++	OUTREG(trans_vtot_reg, INREG(cpu_vtot_reg));
++	OUTREG(trans_vblank_reg, INREG(cpu_vblank_reg));
++	OUTREG(trans_vsync_reg, INREG(cpu_vsync_reg));
++
++	/* enable PCH transcoder */
++	temp = INREG(transconf_reg);
++	OUTREG(transconf_reg, temp | TRANS_ENABLE);
++	INREG(transconf_reg);
++
++	while ((INREG(transconf_reg) & TRANS_STATE_ENABLE) == 0)
++	    usleep(500);
++
++	/* enable normal */
++
++	temp = INREG(fdi_tx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	OUTREG(fdi_tx_reg, temp | FDI_LINK_TRAIN_NONE |
++		   FDI_TX_ENHANCE_FRAME_ENABLE);
++	INREG(fdi_tx_reg);
++
++	temp = INREG(fdi_rx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	OUTREG(fdi_rx_reg, temp | FDI_LINK_TRAIN_NONE |
++		   FDI_RX_ENHANCE_FRAME_ENABLE);
++	INREG(fdi_rx_reg);
++
++	/* wait one idle pattern time */
++	usleep(100);
++
++	i830_crtc_load_lut(crtc);
++
++	break;
++    case DPMSModeOff:
++
++	/* Disable display plane */
++	temp = INREG(dspcntr_reg);
++	if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
++	    OUTREG(dspcntr_reg, temp & ~DISPLAY_PLANE_ENABLE);
++	    /* Flush the plane changes */
++	    OUTREG(dspbase_reg, INREG(dspbase_reg));
++	    INREG(dspbase_reg);
++	}
++
++	/* disable cpu pipe, disable after all planes disabled */
++	temp = INREG(pipeconf_reg);
++	if ((temp & PIPEACONF_ENABLE) != 0) {
++	    OUTREG(pipeconf_reg, temp & ~PIPEACONF_ENABLE);
++	    INREG(pipeconf_reg);
++	    n = 0;
++	    /* wait for cpu pipe off, pipe state */
++	    while ((INREG(pipeconf_reg) & I965_PIPECONF_ACTIVE) != 0) {
++		n++;
++		if (n < 60) {
++		    usleep(5000);
++		    continue;
++		} else {
++		    break;
++		}
++	    }
++	}
++
++	/* disable CPU FDI tx and PCH FDI rx */
++	temp = INREG(fdi_tx_reg);
++	OUTREG(fdi_tx_reg, temp & ~FDI_TX_ENABLE);
++	INREG(fdi_tx_reg);
++
++	temp = INREG(fdi_rx_reg);
++	OUTREG(fdi_rx_reg, temp & ~FDI_RX_ENABLE);
++	INREG(fdi_rx_reg);
++
++	usleep(100);
++
++	/* still set train pattern 1 */
++	temp = INREG(fdi_tx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	temp |= FDI_LINK_TRAIN_PATTERN_1;
++	OUTREG(fdi_tx_reg, temp);
++
++	temp = INREG(fdi_rx_reg);
++	temp &= ~FDI_LINK_TRAIN_NONE;
++	temp |= FDI_LINK_TRAIN_PATTERN_1;
++	OUTREG(fdi_rx_reg, temp);
++
++	usleep(100);
++
++	/* disable PCH transcoder */
++	temp = INREG(transconf_reg);
++	if ((temp & TRANS_STATE_ENABLE) != 0) {
++	    OUTREG(transconf_reg, temp & ~TRANS_ENABLE);
++	    INREG(transconf_reg);
++	    n = 0;
++	    /* wait for PCH transcoder off, transcoder state */
++	    while ((INREG(transconf_reg) & TRANS_STATE_ENABLE) != 0) {
++		n++;
++		if (n < 60) {
++		    usleep(500);
++		    continue;
++		} else {
++		    break;
++		}
++	    }
++	}
++
++	/* disable PCH DPLL */
++	temp = INREG(pch_dpll_reg);
++	if ((temp & DPLL_VCO_ENABLE) != 0) {
++	    OUTREG(pch_dpll_reg, temp & ~DPLL_VCO_ENABLE);
++	    INREG(pch_dpll_reg);
++	}
++
++	temp = INREG(fdi_rx_reg);
++	if ((temp & FDI_RX_PLL_ENABLE) != 0) {
++	    temp &= ~FDI_SEL_PCDCLK;
++	    temp &= ~FDI_RX_PLL_ENABLE;
++	    OUTREG(fdi_rx_reg, temp);
++	    INREG(fdi_rx_reg);
++	}
++
++	temp = INREG(fdi_tx_reg);
++	if ((temp & FDI_TX_PLL_ENABLE) != 0) {
++	    OUTREG(fdi_tx_reg, temp & ~FDI_TX_PLL_ENABLE);
++	    INREG(fdi_tx_reg);
++	    usleep(100);
++	}
++
++	/* Disable PF */
++	temp = INREG(pf_ctl_reg);
++	if ((temp & PF_ENABLE) != 0) {
++	    OUTREG(pf_ctl_reg, temp & ~PF_ENABLE);
++	    INREG(pf_ctl_reg);
++	}
++	OUTREG(pf_win_size, 0);
++
++	/* Wait for the clocks to turn off. */
++	usleep(150);
++
++	i830_disable_vga_plane (crtc);
++
++	break;
++    }
++}
++
+ /**
+  * Sets the power management mode of the pipe and plane.
+  *
+@@ -703,7 +1156,7 @@ i830_disable_vga_plane (xf86CrtcPtr crtc
+  * on appropriately at the same time as we're turning the pipe off/on.
+  */
+ static void
+-i830_crtc_dpms(xf86CrtcPtr crtc, int mode)
++i9xx_crtc_dpms(xf86CrtcPtr crtc, int mode)
+ {
+     ScrnInfoPtr pScrn = crtc->scrn;
+     I830Ptr pI830 = I830PTR(pScrn);
+@@ -822,6 +1275,19 @@ i830_crtc_dpms(xf86CrtcPtr crtc, int mod
+ 
+ 	break;
+     }
++}
++
++static void
++i830_crtc_dpms(xf86CrtcPtr crtc, int mode)
++{
++    ScrnInfoPtr pScrn = crtc->scrn;
++    I830Ptr pI830 = I830PTR(pScrn);
++    I830CrtcPrivatePtr intel_crtc = crtc->driver_private;
++
++    if (IS_IGDNG(pI830))
++	igdng_crtc_dpms(crtc, mode);
++    else
++	i9xx_crtc_dpms(crtc, mode);
+ 
+     intel_crtc->dpms_mode = mode;
+ 
+@@ -835,7 +1301,7 @@ i830_crtc_dpms(xf86CrtcPtr crtc, int mod
+ 	if (!sPriv)
+ 	    return;
+ 
+-	switch (plane) {
++	switch (intel_crtc->pipe) {
+ 	case 0:
+ 	    sPriv->planeA_w = enabled ? crtc->mode.HDisplay : 0;
+ 	    sPriv->planeA_h = enabled ? crtc->mode.VDisplay : 0;
+@@ -846,7 +1312,7 @@ i830_crtc_dpms(xf86CrtcPtr crtc, int mod
+ 	    break;
+ 	default:
+ 	    xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+-		       "Can't update pipe %d in SAREA\n", pipe);
++		       "Can't update pipe %d in SAREA\n", intel_crtc->pipe);
+ 	    break;
+ 	}
+     }
+@@ -921,6 +1387,15 @@ static Bool
+ i830_crtc_mode_fixup(xf86CrtcPtr crtc, DisplayModePtr mode,
+ 		     DisplayModePtr adjusted_mode)
+ {
++    ScrnInfoPtr pScrn = crtc->scrn;
++    I830Ptr pI830 = I830PTR(pScrn);
++
++    if (IS_IGDNG(pI830)) {
++	/* FDI link clock is fixed at 2.7G */
++	if (mode->Clock * 3 > 27000 * 4)
++	    return MODE_CLOCK_HIGH;
++    }
++
+     return TRUE;
+ }
+ 
+@@ -1015,6 +1490,47 @@ i830_panel_fitter_pipe(I830Ptr pI830)
+     return 1;
+ }
+ 
++struct fdi_m_n {
++    CARD32        tu;
++    CARD32        gmch_m;
++    CARD32        gmch_n;
++    CARD32        link_m;
++    CARD32        link_n;
++};
++
++static void
++fdi_reduce_ratio(CARD32 *num, CARD32 *den)
++{
++    while (*num > 0xffffff || *den > 0xffffff) {
++	*num >>= 1;
++	*den >>= 1;
++    }
++}
++
++#define DATA_N 0x800000
++#define LINK_N 0x80000
++
++static void
++igdng_compute_m_n(int bytes_per_pixel, int nlanes,
++		  int pixel_clock, int link_clock,
++		  struct fdi_m_n *m_n)
++{
++    uint64_t temp;
++
++    m_n->tu = 64; /* default size */
++
++    temp = (uint64_t) DATA_N * pixel_clock;
++    temp = temp / link_clock;
++    m_n->gmch_m = (temp * bytes_per_pixel) / nlanes;
++    m_n->gmch_n = DATA_N;
++    fdi_reduce_ratio(&m_n->gmch_m, &m_n->gmch_n);
++
++    temp = (uint64_t) LINK_N * pixel_clock;
++    m_n->link_m = temp / link_clock;
++    m_n->link_n = LINK_N;
++    fdi_reduce_ratio(&m_n->link_m, &m_n->link_n);
++}
++
+ /**
+  * Sets up registers for the given mode/adjusted_mode pair.
+  *
+@@ -1056,6 +1572,18 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+     Bool ok, is_sdvo = FALSE, is_dvo = FALSE;
+     Bool is_crt = FALSE, is_lvds = FALSE, is_tv = FALSE;
+ 
++    struct fdi_m_n m_n = {0};
++    int data_m1_reg = (pipe == 0) ? PIPEA_DATA_M1 : PIPEB_DATA_M1;
++    int data_n1_reg = (pipe == 0) ? PIPEA_DATA_N1 : PIPEB_DATA_N1;
++    int link_m1_reg = (pipe == 0) ? PIPEA_LINK_M1 : PIPEB_LINK_M1;
++    int link_n1_reg = (pipe == 0) ? PIPEA_LINK_N1 : PIPEB_LINK_N1;
++    int pch_fp_reg = (pipe == 0) ? PCH_FPA0 : PCH_FPB0;
++    int pch_dpll_reg = (pipe == 0) ? PCH_DPLL_A : PCH_DPLL_B;
++    int fdi_rx_reg = (pipe == 0) ? FDI_RXA_CTL : FDI_RXB_CTL;
++    int lvds_reg = LVDS;
++    uint32_t temp;
++    int sdvo_pixel_multiply;
++
+     /* Set up some convenient bools for what outputs are connected to
+      * our pipe, used in DPLL setup.
+      */
+@@ -1090,6 +1618,8 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 
+     if (IS_I9XX(pI830)) {
+ 	refclk = 96000;
++	if (IS_IGDNG(pI830))
++	    refclk = 120000; /* 120Mhz refclk */
+     } else {
+ 	refclk = 48000;
+     }
+@@ -1106,9 +1636,16 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 		   (float)adjusted_mode->Clock / 1000);
+     }
+ 
++    if (IS_IGDNG(pI830))
++	igdng_compute_m_n(3, 4, /* lane num 4 */
++			  adjusted_mode->Clock,
++			  270000, /* lane clock */
++			  &m_n);
++
+     fp = clock.n << 16 | clock.m1 << 8 | clock.m2;
+ 
+-    dpll = DPLL_VGA_MODE_DIS;
++    if (!IS_IGDNG(pI830))
++	dpll = DPLL_VGA_MODE_DIS;
+     if (IS_I9XX(pI830)) {
+ 	if (is_lvds)
+ 	    dpll |= DPLLB_MODE_LVDS;
+@@ -1117,15 +1654,19 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 	if (is_sdvo)
+ 	{
+ 	    dpll |= DPLL_DVO_HIGH_SPEED;
++	    sdvo_pixel_multiply = adjusted_mode->Clock / mode->Clock;
+ 	    if (IS_I945G(pI830) || IS_I945GM(pI830) || IS_G33CLASS(pI830))
+-	    {
+-		int sdvo_pixel_multiply = adjusted_mode->Clock / mode->Clock;
+ 		dpll |= (sdvo_pixel_multiply - 1) << SDVO_MULTIPLIER_SHIFT_HIRES;
+-	    }
++	    else if (IS_IGDNG(pI830))
++		dpll |= (sdvo_pixel_multiply - 1) << PLL_REF_SDVO_HDMI_MULTIPLIER_SHIFT;
++		
+ 	}
+ 	
+ 	/* compute bitmask from p1 value */
+ 	dpll |= (1 << (clock.p1 - 1)) << 16;
++	/* also FPA1 */
++	if (IS_IGDNG(pI830))
++	    dpll |= (1 << (clock.p1 - 1)) << DPLL_FPA1_P1_POST_DIV_SHIFT;
+ 	switch (clock.p2) {
+ 	case 5:
+ 	    dpll |= DPLL_DAC_SERIAL_P2_CLOCK_DIV_5;
+@@ -1140,7 +1681,7 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 	    dpll |= DPLLB_LVDS_P2_CLOCK_DIV_14;
+ 	    break;
+ 	}
+-	if (IS_I965G(pI830) && !IS_GM45(pI830))
++	if (IS_I965G(pI830) && !IS_GM45(pI830) && !IS_IGDNG(pI830))
+ 	    dpll |= (6 << PLL_LOAD_PULSE_PHASE_SHIFT);
+     } else {
+ 	if (is_lvds) {
+@@ -1161,15 +1702,16 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ /*	dpll |= PLL_REF_INPUT_TVCLKINBC; */
+ 	dpll |= 3;
+     }
+-#if 0
+     else if (is_lvds)
+ 	dpll |= PLLB_REF_INPUT_SPREADSPECTRUMIN;
+-#endif
+     else
+ 	dpll |= PLL_REF_INPUT_DREFCLK;
+ 
+     /* Set up the display plane register */
+     dspcntr = DISPPLANE_GAMMA_ENABLE;
++    if (IS_IGDNG(pI830))
++	dspcntr |= DISPPLANE_TRICKLE_FEED_DISABLE;
++
+     switch (pScrn->bitsPerPixel) {
+     case 8:
+ 	dspcntr |= DISPPLANE_8BPP;
+@@ -1187,10 +1729,14 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 	FatalError("unknown display bpp\n");
+     }
+ 
+-    if (pipe == 0)
+-	dspcntr |= DISPPLANE_SEL_PIPE_A;
+-    else
+-	dspcntr |= DISPPLANE_SEL_PIPE_B;
++    /* IGDNG's plane is forced to pipe, bit 24 is to
++       enable color space conversion */
++    if (!IS_IGDNG(pI830)) {
++	if (pipe == 0)
++	    dspcntr |= DISPPLANE_SEL_PIPE_A;
++	else
++	    dspcntr |= DISPPLANE_SEL_PIPE_B;
++    }
+ 
+     if (IS_I965G(pI830) && i830_display_tiled(crtc))
+ 	dspcntr |= DISPLAY_PLANE_TILED;
+@@ -1222,7 +1768,7 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+     }
+     
+     /* Disable the panel fitter if it was on our pipe */
+-    if (i830_panel_fitter_pipe (pI830) == pipe)
++    if (!IS_IGDNG(pI830) && i830_panel_fitter_pipe (pI830) == pipe)
+ 	OUTREG(PFIT_CONTROL, 0);
+ 
+     if (pI830->debug_modes) {
+@@ -1237,6 +1783,12 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 	i830PrintPll("chosen", &clock);
+     }
+ 
++    /* assign to IGDNG registers */
++    if (IS_IGDNG(pI830)) {
++	fp_reg = pch_fp_reg;
++	dpll_reg = pch_dpll_reg;
++    }
++
+     if (dpll & DPLL_VCO_ENABLE)
+     {
+         OUTREG(fp_reg, fp);
+@@ -1251,8 +1803,12 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+      */
+     if (is_lvds)
+     {
+-	CARD32 lvds = INREG(LVDS);
++	CARD32 lvds;
++
++	if (IS_IGDNG(pI830))
++	    lvds_reg = PCH_LVDS;
+ 
++	lvds = INREG(LVDS);
+ 	lvds |= LVDS_PORT_EN | LVDS_A0A2_CLKA_POWER_UP | LVDS_PIPEB_SELECT;
+ 	/* Set the B0-B3 data pairs corresponding to whether we're going to
+ 	 * set the DPLLs for dual-channel mode or not.
+@@ -1276,17 +1832,18 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 		lvds |= LVDS_DITHER_ENABLE;
+ 	}
+ 
+-	OUTREG(LVDS, lvds);
+-	POSTING_READ(LVDS);
++	OUTREG(lvds_reg, lvds);
++	POSTING_READ(lvds_reg);
+     }
+ 
+     OUTREG(fp_reg, fp);
++    OUTREG(fp_reg + 4, fp);
+     OUTREG(dpll_reg, dpll);
+     POSTING_READ(dpll_reg);
+     /* Wait for the clocks to stabilize. */
+     usleep(150);
+     
+-    if (IS_I965G(pI830)) {
++    if (IS_I965G(pI830) && !IS_IGDNG(pI830)) {
+ 	int sdvo_pixel_multiply = adjusted_mode->Clock / mode->Clock;
+ 	OUTREG(dpll_md_reg, (0 << DPLL_MD_UDI_DIVIDER_SHIFT) |
+ 	       ((sdvo_pixel_multiply - 1) << DPLL_MD_UDI_MULTIPLIER_SHIFT));
+@@ -1297,7 +1854,7 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+     POSTING_READ(dpll_reg);
+     /* Wait for the clocks to stabilize. */
+     usleep(150);
+-
++    
+     OUTREG(htot_reg, (adjusted_mode->CrtcHDisplay - 1) |
+ 	((adjusted_mode->CrtcHTotal - 1) << 16));
+     OUTREG(hblank_reg, (adjusted_mode->CrtcHBlankStart - 1) |
+@@ -1306,7 +1863,7 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+ 	((adjusted_mode->CrtcHSyncEnd - 1) << 16));
+     OUTREG(vtot_reg, (adjusted_mode->CrtcVDisplay - 1) |
+ 	((adjusted_mode->CrtcVTotal - 1) << 16));
+-    
++
+     OUTREG(vblank_reg, (adjusted_mode->CrtcVBlankStart - 1) |
+ 	((adjusted_mode->CrtcVBlankEnd - 1) << 16));
+     OUTREG(vsync_reg, (adjusted_mode->CrtcVSyncStart - 1) |
+@@ -1315,13 +1872,34 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, Dis
+     /* pipesrc and dspsize control the size that is scaled from, which should
+      * always be the user's requested size.
+      */
+-    OUTREG(dspsize_reg, ((mode->VDisplay - 1) << 16) | (mode->HDisplay - 1));
+-    OUTREG(dsppos_reg, 0);
++    if (!IS_IGDNG(pI830)) {
++	OUTREG(dspsize_reg, ((mode->VDisplay - 1) << 16) | (mode->HDisplay - 1));
++	OUTREG(dsppos_reg, 0);
++    }
+     OUTREG(pipesrc_reg, ((mode->HDisplay - 1) << 16) | (mode->VDisplay - 1));
++
++    if (IS_IGDNG(pI830)) {
++	OUTREG(data_m1_reg, TU_SIZE(m_n.tu) | m_n.gmch_m);
++	OUTREG(data_n1_reg, TU_SIZE(m_n.tu) | m_n.gmch_n);
++	OUTREG(link_m1_reg, m_n.link_m);
++	OUTREG(link_n1_reg, m_n.link_n);
++
++	/* enable FDI RX PLL too */
++	temp = INREG(fdi_rx_reg);
++	OUTREG(fdi_rx_reg, temp | FDI_RX_PLL_ENABLE);
++	usleep(200);
++    }
++
+     OUTREG(pipeconf_reg, pipeconf);
+     POSTING_READ(pipeconf_reg);
+     i830WaitForVblank(pScrn);
+ 
++    if (IS_IGDNG(pI830)) {
++	/* enable address swizzle for tiling buffer */
++	temp = INREG(DISP_ARB_CTL);
++	OUTREG(DISP_ARB_CTL, temp | DISP_TILE_SURFACE_SWIZZLING);
++    }
++
+     OUTREG(dspcntr_reg, dspcntr);
+     /* Flush the plane changes */
+     i830PipeSetBase(crtc, x, y);
+@@ -1347,6 +1925,11 @@ i830_crtc_load_lut(xf86CrtcPtr crtc)
+     if (!crtc->enabled)
+ 	return;
+ 
++    /* use legacy palette for IGDNG */
++    if (IS_IGDNG(pI830))
++	palreg = (intel_crtc->pipe == 0) ? LGC_PALETTE_A :
++	    LGC_PALETTE_B;
++
+     for (i = 0; i < 256; i++) {
+ 	OUTREG(palreg + 4 * i,
+ 	       (intel_crtc->lut_r[i] << 16) |
+--- xf86-video-intel-2.2.1/src/i830_driver.c.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2009-12-18 15:15:50.000000000 -0500
+@@ -919,7 +919,24 @@ I830SetupOutputs(ScrnInfoPtr pScrn)
+    if (IS_MOBILE(pI830) && !IS_I830(pI830))
+       i830_lvds_init(pScrn);
+ 
+-   if (IS_I9XX(pI830)) {
++   if (IS_IGDNG(pI830)) {
++     int found;
++
++     if (INREG(HDMIB) & PORT_DETECTED) {
++       /* check SDVOB */
++       /* found = intel_sdvo_init(dev, HDMIB); */
++       found = 0;
++       if (!found)
++	 i830_hdmi_init(pScrn, HDMIB);
++     }
++
++     if (INREG(HDMIC) & PORT_DETECTED)
++       i830_hdmi_init(pScrn, HDMIC);
++
++     if (INREG(HDMID) & PORT_DETECTED)
++       i830_hdmi_init(pScrn, HDMID);
++
++   } else if (IS_I9XX(pI830)) {
+       if (INREG(SDVOB) & SDVO_DETECTED) {
+ 	 Bool found = i830_sdvo_init(pScrn, SDVOB);
+ 
+@@ -936,7 +953,7 @@ I830SetupOutputs(ScrnInfoPtr pScrn)
+    } else {
+       i830_dvo_init(pScrn);
+    }
+-   if (IS_I9XX(pI830) && IS_MOBILE(pI830))
++   if (IS_I9XX(pI830) && IS_MOBILE(pI830) && !IS_IGDNG(pI830))
+       i830_tv_init(pScrn);
+    
+    for (o = 0; o < config->num_output; o++)
+--- xf86-video-intel-2.2.1/src/i830_hdmi.c.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_hdmi.c	2009-12-18 15:15:50.000000000 -0500
+@@ -125,6 +125,22 @@ i830_hdmi_restore(xf86OutputPtr output)
+     OUTREG(dev_priv->output_reg, dev_priv->save_SDVO);
+ }
+ 
++static xf86OutputStatus
++igdng_hdmi_detect(xf86OutputPtr output)
++{
++    DisplayModePtr modes;
++    xf86OutputStatus status;
++
++    modes = i830_ddc_get_modes(output);
++
++    if (modes == NULL)
++	status = XF86OutputStatusDisconnected;
++    else
++	status = XF86OutputStatusConnected;
++
++    return status;
++}
++
+ /**
+  * Uses CRT_HOTPLUG_EN and CRT_HOTPLUG_STAT to detect HDMI connection.
+  *
+@@ -142,6 +158,9 @@ i830_hdmi_detect(xf86OutputPtr output)
+     xf86OutputStatus status;
+     xf86MonPtr edid_mon;
+ 
++    if (IS_IGDNG(pI830))
++	return igdng_hdmi_detect(output);
++
+     /* For G4X, PEG_BAND_GAP_DATA 3:0 must first be written 0xd.
+      * Failure to do so will result in spurious interrupts being
+      * generated on the port when a cable is not attached.
+@@ -215,9 +234,27 @@ i830_hdmi_init(ScrnInfoPtr pScrn, int ou
+     xf86OutputPtr output;
+     I830OutputPrivatePtr intel_output;
+     struct i830_hdmi_priv *dev_priv;
++    const char *name;
+ 
+-    output = xf86OutputCreate(pScrn, &i830_hdmi_output_funcs,
+-			      (output_reg == SDVOB) ? "HDMI-1" : "HDMI-2");
++    switch (output_reg) {
++    case SDVOB:
++	name = "HDMI-1";
++	break;
++    case SDVOC:
++	name = "HDMI-2";
++	break;
++    case HDMIB:
++	name = "HDMI-3";
++	break;
++    case HDMIC:
++	name = "HDMI-4";
++	break;
++    case HDMID:
++	name = "HDMI-5";
++	break;
++    }
++
++    output = xf86OutputCreate(pScrn, &i830_hdmi_output_funcs, name);
+     if (!output)
+ 	return;
+     intel_output = xnfcalloc(sizeof (I830OutputPrivateRec) +
+@@ -241,10 +278,15 @@ i830_hdmi_init(ScrnInfoPtr pScrn, int ou
+     /* Set up the DDC bus. */
+     if (output_reg == SDVOB)
+ 	I830I2CInit(pScrn, &intel_output->pDDCBus, GPIOE, "HDMIDDC_B");
+-    else
++    else if (output_reg == SDVOC)
+ 	I830I2CInit(pScrn, &intel_output->pDDCBus, GPIOD, "HDMIDDC_C");
++    else if (output_reg == HDMIB)
++	I830I2CInit(pScrn, &intel_output->pDDCBus, PCH_GPIOE, "HDMIB");
++    else if (output_reg == HDMIC)
++	I830I2CInit(pScrn, &intel_output->pDDCBus, PCH_GPIOD, "HDMIC");
++    else if (output_reg == HDMID)
++	I830I2CInit(pScrn, &intel_output->pDDCBus, PCH_GPIOF, "HDMID");
+ 
+     xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+-	       "HDMI output %d detected\n",
+-	       (output_reg == SDVOB) ? 1 : 2);
++	       "%s output detected\n", output->name);
+ }
+--- xf86-video-intel-2.2.1/src/i830_lvds.c.jx	2009-12-18 15:15:50.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_lvds.c	2009-12-18 15:15:50.000000000 -0500
+@@ -135,11 +135,16 @@ i830_lvds_set_backlight_native(xf86Outpu
+ {
+     ScrnInfoPtr pScrn = output->scrn;
+     I830Ptr pI830 = I830PTR(pScrn);
+-    CARD32 blc_pwm_ctl;
++    CARD32 blc_pwm_ctl, reg;
+ 
+-    blc_pwm_ctl = INREG(BLC_PWM_CTL);
++    if (IS_IGDNG(pI830))
++      reg = BLC_PWM_CPU_CTL;
++    else
++      reg = BLC_PWM_CTL;
++
++    blc_pwm_ctl = INREG(reg);
+     blc_pwm_ctl &= ~BACKLIGHT_DUTY_CYCLE_MASK;
+-    OUTREG(BLC_PWM_CTL, blc_pwm_ctl | (level << BACKLIGHT_DUTY_CYCLE_SHIFT));
++    OUTREG(reg, blc_pwm_ctl | (level << BACKLIGHT_DUTY_CYCLE_SHIFT));
+ }
+ 
+ static int
+@@ -159,8 +164,15 @@ i830_lvds_get_backlight_max_native(xf86O
+ {
+     ScrnInfoPtr pScrn = output->scrn;
+     I830Ptr pI830 = I830PTR(pScrn);
+-    CARD32 pwm_ctl = INREG(BLC_PWM_CTL);
+-    int val;
++    CARD32 pwm_ctl;
++    int val, reg;
++
++    if (IS_IGDNG(pI830))
++      reg = BLC_PWM_PCH_CTL2;
++    else
++      reg = BLC_PWM_CTL;
++
++    val = INREG(BLC_PWM_CTL);
+ 
+     if (IS_I965GM(pI830) || IS_GM45(pI830)) {
+ 	val = ((pwm_ctl & BACKLIGHT_MODULATION_FREQ_MASK2) >>
+@@ -370,7 +382,15 @@ i830SetLVDSPanelPower(xf86OutputPtr outp
+     struct i830_lvds_priv   *dev_priv = intel_output->dev_priv;
+     ScrnInfoPtr		    pScrn = output->scrn;
+     I830Ptr		    pI830 = I830PTR(pScrn);
+-    CARD32		    pp_status;
++    CARD32		    pp_status, ctl_reg, status_reg;
++
++    if (IS_IGDNG(pI830)) {
++	ctl_reg = PCH_PP_CONTROL;
++	status_reg = PCH_PP_STATUS;
++    } else {
++	ctl_reg = PP_CONTROL;
++	status_reg = PP_STATUS;
++    }
+ 
+     if (on) {
+ 	/*
+@@ -380,13 +400,13 @@ i830SetLVDSPanelPower(xf86OutputPtr outp
+ 	 * controller for example), so on them, when turning LVDS back on,
+ 	 * they'll always re-maximize the brightness.
+ 	 */
+-	if (!(INREG(PP_CONTROL) & POWER_TARGET_ON) &&
++	if (!(INREG(ctl_reg) & POWER_TARGET_ON) &&
+ 	    dev_priv->backlight_duty_cycle == 0)
+ 	    dev_priv->backlight_duty_cycle = dev_priv->backlight_max;
+ 
+-	OUTREG(PP_CONTROL, INREG(PP_CONTROL) | POWER_TARGET_ON);
++	OUTREG(ctl_reg, INREG(ctl_reg) | POWER_TARGET_ON);
+ 	do {
+-	    pp_status = INREG(PP_STATUS);
++	    pp_status = INREG(status_reg);
+ 	} while ((pp_status & PP_ON) == 0);
+ 
+ 	dev_priv->set_backlight(output, dev_priv->backlight_duty_cycle);
+@@ -395,13 +415,13 @@ i830SetLVDSPanelPower(xf86OutputPtr outp
+ 	 * Only save the current backlight value if we're going from
+ 	 * on to off.
+ 	 */
+-	if (INREG(PP_CONTROL) & POWER_TARGET_ON)
++	if (INREG(ctl_reg) & POWER_TARGET_ON)
+ 	    dev_priv->backlight_duty_cycle = dev_priv->get_backlight(output);
+ 	dev_priv->set_backlight(output, 0);
+ 
+-	OUTREG(PP_CONTROL, INREG(PP_CONTROL) & ~POWER_TARGET_ON);
++	OUTREG(ctl_reg, INREG(ctl_reg) & ~POWER_TARGET_ON);
+ 	do {
+-	    pp_status = INREG(PP_STATUS);
++	    pp_status = INREG(status_reg);
+ 	} while (pp_status & PP_ON);
+     }
+ }
+@@ -424,14 +444,30 @@ i830_lvds_save (xf86OutputPtr output)
+     struct i830_lvds_priv   *dev_priv = intel_output->dev_priv;
+     ScrnInfoPtr		    pScrn = output->scrn;
+     I830Ptr		    pI830 = I830PTR(pScrn);
++    CARD32 pp_on_reg, pp_off_reg, pp_ctl_reg, pp_div_reg;
++    CARD32 pwm_ctl_reg;
++
++    if (IS_IGDNG(pI830)) {
++	pp_on_reg = PCH_PP_ON_DELAYS;
++	pp_off_reg = PCH_PP_OFF_DELAYS;
++	pp_ctl_reg = PCH_PP_CONTROL;
++	pp_div_reg = PCH_PP_DIVISOR;
++	pwm_ctl_reg = BLC_PWM_CPU_CTL;
++    } else {
++	pp_on_reg = LVDSPP_ON;
++	pp_off_reg = LVDSPP_OFF;
++	pp_ctl_reg = PP_CONTROL;
++	pp_div_reg = PP_CYCLE;
++	pwm_ctl_reg = BLC_PWM_CTL;
++    }
+ 
+     if (IS_I965GM(pI830) || IS_GM45(pI830))
+ 	pI830->saveBLC_PWM_CTL2 = INREG(BLC_PWM_CTL2);
+-    pI830->savePP_ON = INREG(LVDSPP_ON);
+-    pI830->savePP_OFF = INREG(LVDSPP_OFF);
+-    pI830->savePP_CONTROL = INREG(PP_CONTROL);
+-    pI830->savePP_CYCLE = INREG(PP_CYCLE);
+-    pI830->saveBLC_PWM_CTL = INREG(BLC_PWM_CTL);
++    pI830->savePP_ON = INREG(pp_on_reg);
++    pI830->savePP_OFF = INREG(pp_off_reg);
++    pI830->savePP_CONTROL = INREG(pp_ctl_reg);
++    pI830->savePP_CYCLE = INREG(pp_div_reg);
++    pI830->saveBLC_PWM_CTL = INREG(pwm_ctl_reg);
+     dev_priv->backlight_duty_cycle = dev_priv->get_backlight(output);
+ }
+ 
+@@ -440,14 +476,30 @@ i830_lvds_restore(xf86OutputPtr output)
+ {
+     ScrnInfoPtr	pScrn = output->scrn;
+     I830Ptr	pI830 = I830PTR(pScrn);
++    CARD32 pp_on_reg, pp_off_reg, pp_ctl_reg, pp_div_reg;
++    CARD32 pwm_ctl_reg;
++
++    if (IS_IGDNG(pI830)) {
++	pp_on_reg = PCH_PP_ON_DELAYS;
++	pp_off_reg = PCH_PP_OFF_DELAYS;
++	pp_ctl_reg = PCH_PP_CONTROL;
++	pp_div_reg = PCH_PP_DIVISOR;
++	pwm_ctl_reg = BLC_PWM_CPU_CTL;
++    } else {
++	pp_on_reg = LVDSPP_ON;
++	pp_off_reg = LVDSPP_OFF;
++	pp_ctl_reg = PP_CONTROL;
++	pp_div_reg = PP_CYCLE;
++	pwm_ctl_reg = BLC_PWM_CTL;
++    }
+ 
+     if (IS_I965GM(pI830) || IS_GM45(pI830))
+ 	OUTREG(BLC_PWM_CTL2, pI830->saveBLC_PWM_CTL2);
+-    OUTREG(BLC_PWM_CTL, pI830->saveBLC_PWM_CTL);
+-    OUTREG(LVDSPP_ON, pI830->savePP_ON);
+-    OUTREG(LVDSPP_OFF, pI830->savePP_OFF);
+-    OUTREG(PP_CYCLE, pI830->savePP_CYCLE);
+-    OUTREG(PP_CONTROL, pI830->savePP_CONTROL);
++    OUTREG(pwm_ctl_reg, pI830->saveBLC_PWM_CTL);
++    OUTREG(pp_on_reg, pI830->savePP_ON);
++    OUTREG(pp_off_reg, pI830->savePP_OFF);
++    OUTREG(pp_div_reg, pI830->savePP_CYCLE);
++    OUTREG(pp_ctl_reg, pI830->savePP_CONTROL);
+     if (pI830->savePP_CONTROL & POWER_TARGET_ON)
+ 	i830SetLVDSPanelPower(output, TRUE);
+     else
+@@ -951,10 +1003,17 @@ i830_lvds_init(ScrnInfoPtr pScrn)
+     I830OutputPrivatePtr    intel_output;
+     DisplayModePtr	    modes, scan, bios_mode;
+     struct i830_lvds_priv   *dev_priv;
++    int			    gpio = GPIOC;
+ 
+     if (pI830->quirk_flag & QUIRK_IGNORE_LVDS)
+ 	return;
+ 
++    if (IS_IGDNG(pI830)) {
++      if ((INREG(PCH_LVDS) & LVDS_DETECTED) == 0)
++	return;
++      gpio = PCH_GPIOC;
++    }
++
+     output = xf86OutputCreate (pScrn, &i830_lvds_output_funcs, "LVDS");
+     if (!output)
+ 	return;
+@@ -980,7 +1039,7 @@ i830_lvds_init(ScrnInfoPtr pScrn)
+     /* Set up the LVDS DDC channel.  Most panels won't support it, but it can
+      * be useful if available.
+      */
+-    I830I2CInit(pScrn, &intel_output->pDDCBus, GPIOC, "LVDSDDC_C");
++    I830I2CInit(pScrn, &intel_output->pDDCBus, gpio, "LVDSDDC_C");
+ 
+     /* Attempt to get the fixed panel mode from DDC.  Assume that the preferred
+      * mode is the right one.
+@@ -1007,7 +1066,7 @@ i830_lvds_init(ScrnInfoPtr pScrn)
+     /* If we didn't get EDID, try checking if the panel is already turned on.
+      * If so, assume that whatever is currently programmed is the correct mode.
+      */
+-    if (dev_priv->panel_fixed_mode == NULL) {
++    if (dev_priv->panel_fixed_mode == NULL && !IS_IGDNG(pI830)) {
+ 	CARD32 lvds = INREG(LVDS);
+ 	int pipe = (lvds & LVDS_PIPEB_SELECT) ? 1 : 0;
+ 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
+@@ -1118,6 +1177,19 @@ i830_lvds_init(ScrnInfoPtr pScrn)
+ 
+     dev_priv->backlight_duty_cycle = dev_priv->get_backlight(output);
+ 
++    if (IS_IGDNG(pI830)) {
++	CARD32 pwm;
++	/* make sure PWM is enabled */
++	pwm = INREG(BLC_PWM_CPU_CTL2);
++	pwm |= (PWM_ENABLE | PWM_PIPE_B);
++	OUTREG(BLC_PWM_CPU_CTL2, pwm);
++
++	pwm = INREG(BLC_PWM_PCH_CTL1);
++	pwm |= PWM_PCH_ENABLE;
++	OUTREG(BLC_PWM_PCH_CTL1, pwm);
++    }
++
++
+     return;
+ 
+ disable_exit:

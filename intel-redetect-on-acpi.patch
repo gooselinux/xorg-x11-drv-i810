@@ -1,0 +1,55 @@
+diff -up xf86-video-intel-2.2.1/src/i830_quirks.c.redetect xf86-video-intel-2.2.1/src/i830_quirks.c
+--- xf86-video-intel-2.2.1/src/i830_quirks.c.redetect	2008-02-22 14:51:17.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_quirks.c	2008-02-25 16:52:58.000000000 -0500
+@@ -28,6 +28,7 @@
+ #include "config.h"
+ #endif
+ 
++#include <fcntl.h>
+ #include "i830.h"
+ 
+ #define SUBSYS_ANY (~0)
+@@ -255,12 +256,29 @@ static i830_quirk i830_quirk_list[] = {
+     { 0, 0, 0, NULL },
+ };
+ 
++static void i830_enable_ibm_hotkey(ScrnInfoPtr scrn)
++{
++    int fd;
++    const char *str = "enable,0x084c\n";
++
++    fd = open("/proc/acpi/ibm/hotkey", O_RDWR);
++    if (fd < 0)
++	return;
++
++    write(fd, str, strlen(str));
++
++    close(fd);
++}
++
+ void i830_fixup_devices(ScrnInfoPtr scrn)
+ {
+     I830Ptr pI830 = I830PTR(scrn);
+     i830_quirk_ptr p = i830_quirk_list;
+     int i;
+ 
++    if (SUBVENDOR_ID(pI830->PciInfo) == 0x17aa)
++	i830_enable_ibm_hotkey(scrn);
++
+     i830_dmi_scan();
+ 
+     if (0)
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.redetect xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.redetect	2008-02-25 16:50:32.000000000 -0500
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2008-02-25 16:50:32.000000000 -0500
+@@ -3412,8 +3412,8 @@ I830PMEvent(int scrnIndex, pmEvent event
+          return TRUE;
+ 
+       ErrorF("I830PMEvent: Capability change\n");
+-
+-      I830CheckDevicesTimer(NULL, 0, pScrn);
++      xf86InitialConfiguration(pScrn, 0);
++      xf86SetDesiredModes(pScrn);
+       SaveScreens(SCREEN_SAVER_FORCER, ScreenSaverReset);
+       break;
+    default:

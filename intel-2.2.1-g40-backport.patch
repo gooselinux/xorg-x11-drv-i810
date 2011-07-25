@@ -1,0 +1,433 @@
+diff --git a/src/common.h b/src/common.h
+index c0af1ad..b0484df 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -394,9 +394,29 @@ extern int I810_DEBUG;
+ #define PCI_CHIP_Q33_G_BRIDGE 	0x29D0
+ #endif
+ 
+-#ifndef PCI_CHIP_IGD_GM
+-#define PCI_CHIP_IGD_GM		0x2A42
+-#define PCI_CHIP_IGD_GM_BRIDGE  0x2A40
++#ifndef PCI_CHIP_GM45_GM
++#define PCI_CHIP_GM45_GM	0x2A42
++#define PCI_CHIP_GM45_BRIDGE    0x2A40
++#endif
++
++#ifndef PCI_CHIP_IGD_E_G
++#define PCI_CHIP_IGD_E_G	0x2E02
++#define PCI_CHIP_IGD_E_G_BRIDGE 0x2E00
++#endif
++
++#ifndef PCI_CHIP_G45_G
++#define PCI_CHIP_G45_G		0x2E22
++#define PCI_CHIP_G45_G_BRIDGE	0x2E20
++#endif
++
++#ifndef PCI_CHIP_Q45_G
++#define PCI_CHIP_Q45_G		0x2E12
++#define PCI_CHIP_Q45_G_BRIDGE	0x2E10
++#endif
++
++#ifndef PCI_CHIP_G41_G
++#define PCI_CHIP_G41_G		0x2E32
++#define PCI_CHIP_G41_G_BRIDGE	0x2E30
+ #endif
+ 
+ #if XSERVER_LIBPCIACCESS
+@@ -430,19 +450,24 @@ extern int I810_DEBUG;
+ #define IS_I915GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I915_GM)
+ #define IS_I945G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I945_G)
+ #define IS_I945GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I945_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I945_GME)
+-#define IS_IGD_GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGD_GM)
++#define IS_GM45(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_GM45_GM)
++#define IS_G4X(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_IGD_E_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q45_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G41_G)
+ #define IS_I965GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME)
+-#define IS_I965G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G35_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_Q || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I946_GZ || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME || IS_IGD_GM(pI810))
++#define IS_I965G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G35_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_Q || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I946_GZ || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GM || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_GME || IS_GM45(pI810) || IS_G4X(pI810))
+ #define IS_G33CLASS(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_G33_G ||\
+  			    DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q35_G ||\
+  			    DEVICE_ID(pI810->PciInfo) == PCI_CHIP_Q33_G)
+ #define IS_I9XX(pI810) (IS_I915G(pI810) || IS_I915GM(pI810) || IS_I945G(pI810) || IS_I945GM(pI810) || IS_I965G(pI810) || IS_G33CLASS(pI810))
+ 
+-#define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810) || IS_I965GM(pI810) || IS_IGD_GM(pI810))
++#define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810) || IS_I965GM(pI810) || IS_GM45(pI810))
+ /* mark chipsets for using gfx VM offset for overlay */
+-#define OVERLAY_NOPHYSICAL(pI810) (IS_G33CLASS(pI810))
++#define OVERLAY_NOPHYSICAL(pI810) (IS_G33CLASS(pI810) || IS_I965G(pI810))
++/* mark chipsets without overlay hw */
++#define OVERLAY_NOEXIST(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
+ /* chipsets require graphics mem for hardware status page */
+-#define HWS_NEED_GFX(pI810) (IS_G33CLASS(pI810) || IS_IGD_GM(pI810))
++#define HWS_NEED_GFX(pI810) (IS_G33CLASS(pI810) || IS_GM45(pI810) || IS_G4X(pI810))
++/* chipsets require status page in non stolen memory */
++#define HWS_NEED_NONSTOLEN(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
+ 
+ #define GTT_PAGE_SIZE			KB(4)
+ #define ROUND_TO(x, y)			(((x) + (y) - 1) / (y) * (y))
+diff --git a/src/i810_driver.c b/src/i810_driver.c
+index 53121a6..04d727a 100644
+--- a/src/i810_driver.c
++++ b/src/i810_driver.c
+@@ -152,7 +152,11 @@ static const struct pci_id_match intel_device_match[] = {
+    INTEL_DEVICE_MATCH (PCI_CHIP_G33_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_Q35_G, 0 ),
+    INTEL_DEVICE_MATCH (PCI_CHIP_Q33_G, 0 ),
+-   INTEL_DEVICE_MATCH (PCI_CHIP_IGD_GM, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_GM45_GM, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_IGD_E_G, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_G45_G, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_Q45_G, 0 ),
++   INTEL_DEVICE_MATCH (PCI_CHIP_G41_G, 0 ),
+     { 0, 0, 0 },
+ };
+ 
+@@ -205,7 +209,11 @@ static SymTabRec I810Chipsets[] = {
+    {PCI_CHIP_G33_G,		"G33"},
+    {PCI_CHIP_Q35_G,		"Q35"},
+    {PCI_CHIP_Q33_G,		"Q33"},
+-   {PCI_CHIP_IGD_GM,		"Intel Integrated Graphics Device"},
++   {PCI_CHIP_GM45_GM,		"Mobile Intel® GM45 Express Chipset"},
++   {PCI_CHIP_IGD_E_G,		"Intel Integrated Graphics Device"},
++   {PCI_CHIP_G45_G,		"G45/G43"},
++   {PCI_CHIP_Q45_G,		"Q45/Q43"},
++   {PCI_CHIP_G41_G,		"G41"},
+    {-1,				NULL}
+ };
+ 
+@@ -235,7 +243,11 @@ static PciChipsets I810PciChipsets[] = {
+    {PCI_CHIP_G33_G,		PCI_CHIP_G33_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q35_G,		PCI_CHIP_Q35_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q33_G,		PCI_CHIP_Q33_G,		RES_SHARED_VGA},
+-   {PCI_CHIP_IGD_GM,		PCI_CHIP_IGD_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_GM45_GM,		PCI_CHIP_GM45_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_IGD_E_G,		PCI_CHIP_IGD_E_G,	RES_SHARED_VGA},
++   {PCI_CHIP_G45_G,		PCI_CHIP_G45_G,		RES_SHARED_VGA},
++   {PCI_CHIP_Q45_G,		PCI_CHIP_Q45_G,		RES_SHARED_VGA},
++   {PCI_CHIP_G41_G,		PCI_CHIP_G41_G,		RES_SHARED_VGA},
+    {-1,				-1, RES_UNDEFINED }
+ };
+ 
+@@ -799,7 +811,11 @@ I810Probe(DriverPtr drv, int flags)
+  	    case PCI_CHIP_G33_G:
+  	    case PCI_CHIP_Q35_G:
+  	    case PCI_CHIP_Q33_G:
+- 	    case PCI_CHIP_IGD_GM:
++ 	    case PCI_CHIP_GM45_GM:
++	    case PCI_CHIP_IGD_E_G:
++	    case PCI_CHIP_G45_G:
++	    case PCI_CHIP_Q45_G:
++	    case PCI_CHIP_G41_G:
+     	       xf86SetEntitySharable(usedChips[i]);
+ 
+     	       /* Allocate an entity private if necessary */		
+diff --git a/src/i810_reg.h b/src/i810_reg.h
+index 5170004..d2ce3ab 100644
+--- a/src/i810_reg.h
++++ b/src/i810_reg.h
+@@ -2192,6 +2192,11 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ #define I915G_GMCH_GMS_STOLEN_64M		(0x7 << 4)
+ #define G33_GMCH_GMS_STOLEN_128M		(0x8 << 4)
+ #define G33_GMCH_GMS_STOLEN_256M		(0x9 << 4)
++#define INTEL_GMCH_GMS_STOLEN_96M		(0xa << 4)
++#define INTEL_GMCH_GMS_STOLEN_160M		(0xb << 4)
++#define INTEL_GMCH_GMS_STOLEN_224M		(0xc << 4)
++#define INTEL_GMCH_GMS_STOLEN_352M		(0xd << 4)
++
+ 
+ #define I85X_CAPID			0x44
+ #define I85X_VARIANT_MASK			0x7
+diff --git a/src/i830_display.c b/src/i830_display.c
+index 8f7c068..85a89f7 100644
+--- a/src/i830_display.c
++++ b/src/i830_display.c
+@@ -1099,7 +1099,7 @@ i830_crtc_mode_set(xf86CrtcPtr crtc, DisplayModePtr mode,
+ 	    dpll |= DPLLB_LVDS_P2_CLOCK_DIV_14;
+ 	    break;
+ 	}
+-	if (IS_I965G(pI830))
++	if (IS_I965G(pI830) && !IS_GM45(pI830))
+ 	    dpll |= (6 << PLL_LOAD_PULSE_PHASE_SHIFT);
+     } else {
+ 	if (is_lvds) {
+diff --git a/src/i830_driver.c b/src/i830_driver.c
+index 5cd0a34..9afecb0 100644
+--- a/src/i830_driver.c
++++ b/src/i830_driver.c
+@@ -244,7 +244,11 @@ static SymTabRec I830Chipsets[] = {
+    {PCI_CHIP_G33_G,		"G33"},
+    {PCI_CHIP_Q35_G,		"Q35"},
+    {PCI_CHIP_Q33_G,		"Q33"},
+-   {PCI_CHIP_IGD_GM,		"Intel Integrated Graphics Device"},
++   {PCI_CHIP_GM45_GM,		"Mobile Intel® GM45 Express Chipset"},
++   {PCI_CHIP_IGD_E_G,		"Intel Integrated Graphics Device"},
++   {PCI_CHIP_G45_G,		"G45/G43"},
++   {PCI_CHIP_Q45_G,		"Q45/Q43"},
++   {PCI_CHIP_G41_G,		"G41"},
+    {-1,				NULL}
+ };
+ 
+@@ -268,7 +272,11 @@ static PciChipsets I830PciChipsets[] = {
+    {PCI_CHIP_G33_G,		PCI_CHIP_G33_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q35_G,		PCI_CHIP_Q35_G,		RES_SHARED_VGA},
+    {PCI_CHIP_Q33_G,		PCI_CHIP_Q33_G,		RES_SHARED_VGA},
+-   {PCI_CHIP_IGD_GM,		PCI_CHIP_IGD_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_GM45_GM,		PCI_CHIP_GM45_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_IGD_E_G,		PCI_CHIP_IGD_E_G,	RES_SHARED_VGA},
++   {PCI_CHIP_G45_G,		PCI_CHIP_G45_G,		RES_SHARED_VGA},
++   {PCI_CHIP_Q45_G,		PCI_CHIP_Q45_G,		RES_SHARED_VGA},
++   {PCI_CHIP_G41_G,		PCI_CHIP_G41_G,		RES_SHARED_VGA},
+    {-1,				-1,			RES_UNDEFINED}
+ };
+ 
+@@ -494,6 +502,10 @@ I830DetectMemory(ScrnInfoPtr pScrn)
+     */
+    range = gtt_size + 4;
+ 
++   /* new 4 series hardware has seperate GTT stolen with GFX stolen */
++   if (IS_G4X(pI830) || IS_GM45(pI830))
++       range = 4;
++
+    if (IS_I85X(pI830) || IS_I865G(pI830) || IS_I9XX(pI830)) {
+       switch (gmch_ctrl & I855_GMCH_GMS_MASK) {
+       case I855_GMCH_GMS_STOLEN_1M:
+@@ -527,6 +539,22 @@ I830DetectMemory(ScrnInfoPtr pScrn)
+ 	 if (IS_I9XX(pI830))
+ 	     memsize = MB(256) - KB(range);
+ 	 break;
++      case INTEL_GMCH_GMS_STOLEN_96M:
++	 if (IS_I9XX(pI830))
++	     memsize = MB(96) - KB(range);
++	 break;
++      case INTEL_GMCH_GMS_STOLEN_160M:
++	 if (IS_I9XX(pI830))
++	     memsize = MB(160) - KB(range);
++	 break;
++      case INTEL_GMCH_GMS_STOLEN_224M:
++	 if (IS_I9XX(pI830))
++	     memsize = MB(224) - KB(range);
++	 break;
++      case INTEL_GMCH_GMS_STOLEN_352M:
++	 if (IS_I9XX(pI830))
++	     memsize = MB(352) - KB(range);
++	 break;
+       }
+    } else {
+       switch (gmch_ctrl & I830_GMCH_GMS_MASK) {
+@@ -610,7 +638,7 @@ I830MapMMIO(ScrnInfoPtr pScrn)
+       
+       if (IS_I965G(pI830)) 
+       {
+-	 if (IS_IGD_GM(pI830)) {
++	 if (IS_GM45(pI830) || IS_G4X(pI830)) {
+ 	     gttaddr = pI830->MMIOAddr + MB(2);
+ 	     pI830->GTTMapSize = MB(2);
+ 	 } else {
+@@ -1284,8 +1312,8 @@ I830PreInit(ScrnInfoPtr pScrn, int flags)
+    case PCI_CHIP_Q33_G:
+       chipname = "Q33";
+       break;
+-   case PCI_CHIP_IGD_GM:
+-      chipname = "Intel Integrated Graphics Device";
++   case PCI_CHIP_GM45_GM:
++      chipname = "GM45";
+       break;
+    default:
+       chipname = "unknown chipset";
+@@ -1856,7 +1884,7 @@ SetHWOperatingState(ScrnInfoPtr pScrn)
+ 
+    /* Disable clock gating reported to work incorrectly according to the specs.
+     */
+-   if (IS_I965GM(pI830)) {
++   if (IS_I965GM(pI830) || IS_GM45(pI830)) {
+       OUTREG(RENCLK_GATE_D1, I965_RCC_CLOCK_GATE_DISABLE);
+    } else if (IS_I965G(pI830)) {
+       OUTREG(RENCLK_GATE_D1,
+@@ -2523,7 +2551,7 @@ I830ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+ 
+    /* Enable FB compression if possible */
+    if (i830_fb_compression_supported(pI830) && !IS_I965GM(pI830)
+-	   && !IS_IGD_GM(pI830))
++	   && !IS_GM45(pI830))
+        pI830->fb_compression = TRUE;
+    else
+        pI830->fb_compression = FALSE;
+@@ -2775,7 +2803,7 @@ I830ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+ 		    "needs 2D acceleration.\n");
+ 	 pI830->XvEnabled = FALSE;
+       }
+-      if (!IS_I9XX(pI830) && pI830->overlay_regs == NULL) {
++      if (!OVERLAY_NOEXIST(pI830) && pI830->overlay_regs == NULL) {
+ 	  xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
+ 		     "Disabling Xv because the overlay register buffer "
+ 		      "allocation failed.\n");
+@@ -2815,7 +2843,7 @@ I830ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+     *       alone in that case.
+     * Also make sure the DRM can handle the swap.
+     */
+-   if (I830LVDSPresent(pScrn) && !IS_I965GM(pI830) && !IS_IGD_GM(pI830) &&
++   if (I830LVDSPresent(pScrn) && !IS_I965GM(pI830) && !IS_GM45(pI830) &&
+        (!pI830->directRenderingEnabled ||
+ 	(pI830->directRenderingEnabled && pI830->drmMinor >= 10))) {
+        xf86DrvMsg(pScrn->scrnIndex, X_INFO, "adjusting plane->pipe mappings "
+diff --git a/src/i830_lvds.c b/src/i830_lvds.c
+index ef8fa4a..c27886c 100644
+--- a/src/i830_lvds.c
++++ b/src/i830_lvds.c
+@@ -113,7 +113,7 @@ i830_set_lvds_backlight_method(xf86OutputPtr output)
+ 
+     if (i830_kernel_backlight_available(output)) {
+ 	    method = BCM_KERNEL;
+-    } else if (IS_I965GM(pI830) || IS_IGD_GM(pI830)) {
++    } else if (IS_I965GM(pI830) || IS_GM45(pI830)) {
+ 	blc_pwm_ctl2 = INREG(BLC_PWM_CTL2);
+ 	if (blc_pwm_ctl2 & BLM_LEGACY_MODE2)
+ 	    method = BCM_LEGACY;
+@@ -161,7 +161,7 @@ i830_lvds_get_backlight_max_native(xf86OutputPtr output)
+     CARD32 pwm_ctl = INREG(BLC_PWM_CTL);
+     int val;
+ 
+-    if (IS_I965GM(pI830) || IS_IGD_GM(pI830)) {
++    if (IS_I965GM(pI830) || IS_GM45(pI830)) {
+ 	val = ((pwm_ctl & BACKLIGHT_MODULATION_FREQ_MASK2) >>
+ 	       BACKLIGHT_MODULATION_FREQ_SHIFT2);
+     } else {
+@@ -424,7 +424,7 @@ i830_lvds_save (xf86OutputPtr output)
+     ScrnInfoPtr		    pScrn = output->scrn;
+     I830Ptr		    pI830 = I830PTR(pScrn);
+ 
+-    if (IS_I965GM(pI830) || IS_IGD_GM(pI830))
++    if (IS_I965GM(pI830) || IS_GM45(pI830))
+ 	pI830->saveBLC_PWM_CTL2 = INREG(BLC_PWM_CTL2);
+     pI830->savePP_ON = INREG(LVDSPP_ON);
+     pI830->savePP_OFF = INREG(LVDSPP_OFF);
+@@ -440,7 +440,7 @@ i830_lvds_restore(xf86OutputPtr output)
+     ScrnInfoPtr	pScrn = output->scrn;
+     I830Ptr	pI830 = I830PTR(pScrn);
+ 
+-    if (IS_I965GM(pI830) || IS_IGD_GM(pI830))
++    if (IS_I965GM(pI830) || IS_GM45(pI830))
+ 	OUTREG(BLC_PWM_CTL2, pI830->saveBLC_PWM_CTL2);
+     OUTREG(BLC_PWM_CTL, pI830->saveBLC_PWM_CTL);
+     OUTREG(LVDSPP_ON, pI830->savePP_ON);
+diff --git a/src/i830_memory.c b/src/i830_memory.c
+index aa70215..bf3abf7 100644
+--- a/src/i830_memory.c
++++ b/src/i830_memory.c
+@@ -462,7 +462,7 @@ i830_allocator_init(ScrnInfoPtr pScrn, unsigned long offset, unsigned long size)
+ 	/* Overlay and cursors, if physical, need to be allocated outside
+ 	 * of the kernel memory manager.
+ 	 */
+-	if (!OVERLAY_NOPHYSICAL(pI830) && !IS_I965G(pI830)) {
++	if (!OVERLAY_NOPHYSICAL(pI830) && !OVERLAY_NOEXIST(pI830)) {
+ 	    mmsize -= ROUND_TO(OVERLAY_SIZE, GTT_PAGE_SIZE);
+ 	}
+ 	if (pI830->CursorNeedsPhysical) {
+@@ -474,7 +474,8 @@ i830_allocator_init(ScrnInfoPtr pScrn, unsigned long offset, unsigned long size)
+ 	/* Can't do TTM on stolen memory */
+ 	mmsize -= pI830->stolen_size;
+ 
+-	if (HWS_NEED_GFX(pI830) && IS_IGD_GM(pI830))
++	/* new chipsets need non-stolen status page */
++	if (HWS_NEED_GFX(pI830) && HWS_NEED_NONSTOLEN(pI830))
+ 	    mmsize -= HWSTATUS_PAGE_SIZE;
+ 
+ 	/* Create the aperture allocation */
+@@ -1041,6 +1042,9 @@ i830_allocate_overlay(ScrnInfoPtr pScrn)
+     if (!pI830->XvEnabled)
+ 	return TRUE;
+ 
++    if (OVERLAY_NOEXIST(pI830))
++	return TRUE;
++
+     if (!OVERLAY_NOPHYSICAL(pI830))
+ 	flags |= NEED_PHYSICAL_ADDR;
+ 
+@@ -1313,14 +1317,16 @@ static void i830_setup_fb_compression(ScrnInfoPtr pScrn)
+ 	goto out;
+     }
+ 
+-    pI830->compressed_ll_buffer =
+-	i830_allocate_memory(pScrn, "compressed ll buffer",
+-			     FBC_LL_SIZE + FBC_LL_PAD, KB(4),
+-			     NEED_PHYSICAL_ADDR);
+-    if (!pI830->compressed_ll_buffer) {
+-	i830_free_memory(pScrn, pI830->compressed_front_buffer);
+-	pI830->fb_compression = FALSE;
+-	goto out;
++    if (!IS_GM45(pI830)) {
++	pI830->compressed_ll_buffer =
++	    i830_allocate_memory(pScrn, "compressed ll buffer",
++				 FBC_LL_SIZE + FBC_LL_PAD, KB(4),
++				 NEED_PHYSICAL_ADDR);
++	if (!pI830->compressed_ll_buffer) {
++	    i830_free_memory(pScrn, pI830->compressed_front_buffer);
++	    pI830->fb_compression = FALSE;
++	    goto out;
++	}
+     }
+ 
+ out:
+@@ -1646,7 +1652,7 @@ i830_allocate_hwstatus(ScrnInfoPtr pScrn)
+      * (i.e. not through buffer objects).
+      */
+     flags = NEED_LIFETIME_FIXED;
+-    if (IS_IGD_GM(pI830))
++    if (HWS_NEED_NONSTOLEN(pI830))
+ 	    flags |= NEED_NON_STOLEN;
+     pI830->hw_status = i830_allocate_memory(pScrn, "HW status",
+ 	    HWSTATUS_PAGE_SIZE, GTT_PAGE_SIZE, flags);
+diff --git a/src/i830_sdvo.c b/src/i830_sdvo.c
+index c7cbfac..b9435df 100644
+--- a/src/i830_sdvo.c
++++ b/src/i830_sdvo.c
+@@ -727,7 +727,7 @@ i830_sdvo_mode_set(xf86OutputPtr output, DisplayModePtr mode,
+     }
+ 
+     /* Set the SDVO control regs. */
+-    if (IS_I965GM(pI830) || IS_IGD_GM(pI830)) {
++    if (IS_I965GM(pI830) || IS_GM45(pI830)) {
+ 	sdvox = SDVO_BORDER_ENABLE;
+     } else {
+ 	sdvox = INREG(dev_priv->output_device);
+diff --git a/src/i830_video.c b/src/i830_video.c
+index a0e40ad..87b47c5 100644
+--- a/src/i830_video.c
++++ b/src/i830_video.c
+@@ -580,8 +580,8 @@ I830InitVideo(ScreenPtr pScreen)
+     }
+ 
+     /* Set up overlay video if we can do it at this depth. */
+-    if (!IS_I965G(pI830) && pScrn->bitsPerPixel != 8 &&
+-	pI830->overlay_regs != NULL)
++    if (!OVERLAY_NOEXIST(pI830) && pScrn->bitsPerPixel != 8 &&
++	    pI830->overlay_regs != NULL)
+     {
+ 	overlayAdaptor = I830SetupImageVideoOverlay(pScreen);
+ 	if (overlayAdaptor != NULL) {
+diff --git a/src/i965_render.c b/src/i965_render.c
+index 4b1d7f3..381d737 100644
+--- a/src/i965_render.c
++++ b/src/i965_render.c
+@@ -934,7 +934,7 @@ i965_prepare_composite(int op, PicturePtr pSrcPicture,
+         BEGIN_LP_RING(12);
+ 
+         /* Match Mesa driver setup */
+-	if (IS_IGD_GM(pI830))
++	if (IS_GM45(pI830) || IS_G4X(pI830))
+ 	    OUT_RING(NEW_PIPELINE_SELECT | PIPELINE_SELECT_3D);
+ 	else
+ 	    OUT_RING(BRW_PIPELINE_SELECT | PIPELINE_SELECT_3D);
+diff --git a/src/i965_video.c b/src/i965_video.c
+index 928b52b..d5fef57 100644
+--- a/src/i965_video.c
++++ b/src/i965_video.c
+@@ -509,7 +509,7 @@ I965DisplayVideoTextured(ScrnInfoPtr pScrn, I830PortPrivPtr pPriv, int id,
+     {
+ 	BEGIN_LP_RING(12);
+ 	/* Match Mesa driver setup */
+-	if (IS_IGD_GM(pI830))
++	if (IS_GM45(pI830) || IS_G4X(pI830))
+ 	    OUT_RING(NEW_PIPELINE_SELECT | PIPELINE_SELECT_3D);
+ 	else
+ 	    OUT_RING(BRW_PIPELINE_SELECT | PIPELINE_SELECT_3D);

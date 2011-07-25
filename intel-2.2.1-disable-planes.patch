@@ -1,0 +1,82 @@
+From the Intel 965 Programmer’s Reference Manual, volume 3, 
+chapter 2.2.2 "Mode Switch Programming Sequence".
+
+The disable sequence should be:
+
+ - Disable planes (VGA or hires)
+ - Disable pipe
+ - Disable VGA display in 0x71400 bit 31
+
+This patch implements that order plus waits for a vblank at the end.
+
+Olivier.
+
+--- xf86-video-intel-2.2.1/src/i830_display.c.disable-planes
++++ xf86-video-intel-2.2.1/src/i830_display.c
+@@ -740,12 +740,12 @@
+ 	/* Give the overlay scaler a chance to disable if it's on this pipe */
+ 	i830_crtc_dpms_video(crtc, FALSE);
+ 
+-	/* May need to leave pipe A on */
+-	if ((pipe == 0) && (pI830->quirk_flag & QUIRK_PIPEA_FORCE))
+-	    return;
+-
+-	/* Disable the VGA plane that we never use */
+-	OUTREG(VGACNTRL, VGA_DISP_DISABLE);
++	/* 
++	 * The documentation says :
++	 * - Disable planes (VGA or hires)
++	 * - Disable pipe
++	 * - Disable VGA display
++	 */
+ 
+ 	/* Disable display plane */
+ 	temp = INREG(dspcntr_reg);
+@@ -762,24 +762,33 @@
+ 	    i830WaitForVblank(pScrn);
+ 	}
+ 
+-	/* Next, disable display pipes */
+-	temp = INREG(pipeconf_reg);
+-	if ((temp & PIPEACONF_ENABLE) != 0) {
+-	    OUTREG(pipeconf_reg, temp & ~PIPEACONF_ENABLE);
+-	    POSTING_READ(pipeconf_reg);
++	/* May need to leave pipe A on */
++	if ((pipe != 0) || !(pI830->quirk_flag & QUIRK_PIPEA_FORCE))
++	{
++		/* Next, disable display pipes */
++		temp = INREG(pipeconf_reg);
++		if ((temp & PIPEACONF_ENABLE) != 0) {
++		    OUTREG(pipeconf_reg, temp & ~PIPEACONF_ENABLE);
++		    POSTING_READ(pipeconf_reg);
++		}
++
++		/* Wait for vblank for the disable to take effect. */
++		i830WaitForVblank(pScrn);
++
++		temp = INREG(dpll_reg);
++		if ((temp & DPLL_VCO_ENABLE) != 0) {
++		    OUTREG(dpll_reg, temp & ~DPLL_VCO_ENABLE);
++		    POSTING_READ(dpll_reg);
++		}
++
++		/* Wait for the clocks to turn off. */
++		usleep(150);
+ 	}
+ 
+-	/* Wait for vblank for the disable to take effect. */
++	/* Disable the VGA plane that we never use. */
++	OUTREG(VGACNTRL, VGA_DISP_DISABLE);
+ 	i830WaitForVblank(pScrn);
+ 
+-	temp = INREG(dpll_reg);
+-	if ((temp & DPLL_VCO_ENABLE) != 0) {
+-	    OUTREG(dpll_reg, temp & ~DPLL_VCO_ENABLE);
+-	    POSTING_READ(dpll_reg);
+-	}
+-
+-	/* Wait for the clocks to turn off. */
+-	usleep(150);
+ 	break;
+     }
+ 

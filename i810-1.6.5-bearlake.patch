@@ -1,0 +1,385 @@
+diff -Naurp xf86-video-i810-1.6.5-orig/src/common.h xf86-video-i810-1.6.5/src/common.h
+--- xf86-video-i810-1.6.5-orig/src/common.h	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/common.h	2007-07-03 03:24:56.000000000 -0400
+@@ -309,6 +309,21 @@
+ #define PCI_CHIP_I946_GZ_BRIDGE 	0x2970
+ #endif
+ 
++#ifndef PCI_CHIP_G33_G
++#define PCI_CHIP_G33_G		0x29C2
++#define PCI_CHIP_G33_G_BRIDGE 	0x29C0
++#endif
++
++#ifndef PCI_CHIP_Q35_G
++#define PCI_CHIP_Q35_G		0x29B2
++#define PCI_CHIP_Q35_G_BRIDGE 	0x29B0
++#endif
++
++#ifndef PCI_CHIP_Q33_G
++#define PCI_CHIP_Q33_G		0x29D2
++#define PCI_CHIP_Q33_G_BRIDGE 	0x29D0
++#endif
++
+ #define IS_I810(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I810 ||	\
+ 			pI810->PciInfo->chipType == PCI_CHIP_I810_DC100 || \
+ 			pI810->PciInfo->chipType == PCI_CHIP_I810_E)
+@@ -326,7 +341,11 @@
+ #define IS_I945GM(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I945_GM || pI810->PciInfo->chipType == PCI_CHIP_I945_GME)
+ #define IS_I965GM(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I965_GM || pI810->PciInfo->chipType == PCI_CHIP_I965_GME)
+ #define IS_I965G(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I965_G || pI810->PciInfo->chipType == PCI_CHIP_I965_G_1 || pI810->PciInfo->chipType == PCI_CHIP_I965_Q || pI810->PciInfo->chipType == PCI_CHIP_I946_GZ || pI810->PciInfo->chipType == PCI_CHIP_I965_GM || pI810->PciInfo->chipType == PCI_CHIP_I965_GME)
+-#define IS_I9XX(pI810) (IS_I915G(pI810) || IS_I915GM(pI810) || IS_I945G(pI810) || IS_I945GM(pI810) || IS_I965G(pI810))
++
++#define IS_G33CLASS(pI810) (pI810->PciInfo->chipType == PCI_CHIP_G33_G ||\
++                           pI810->PciInfo->chipType == PCI_CHIP_Q35_G ||\
++                           pI810->PciInfo->chipType == PCI_CHIP_Q33_G)
++#define IS_I9XX(pI810) (IS_I915G(pI810) || IS_I915GM(pI810) || IS_I945G(pI810) || IS_I945GM(pI810) || IS_I965G(pI810) || IS_G33CLASS(pI810))
+ 
+ #define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810) || IS_I965GM(pI810))
+ 
+--- xf86-video-i810-1.6.5-orig/src/i810_driver.c	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i810_driver.c	2007-07-03 03:24:56.000000000 -0400
+@@ -147,6 +147,9 @@
+    {PCI_CHIP_I946_GZ,		"946GZ"},
+    {PCI_CHIP_I965_GM,		"965GM"},
+    {PCI_CHIP_I965_GME,		"965GME/GLE"},
++   {PCI_CHIP_G33_G,            "G33"},
++   {PCI_CHIP_Q35_G,            "Q35"},
++   {PCI_CHIP_Q33_G,            "Q33"},
+    {-1,				NULL}
+ };
+ 
+@@ -173,6 +176,9 @@
+    {PCI_CHIP_I946_GZ,		PCI_CHIP_I946_GZ,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_GM,		PCI_CHIP_I965_GM,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_GME,		PCI_CHIP_I965_GME,	RES_SHARED_VGA},
++   {PCI_CHIP_G33_G,            PCI_CHIP_G33_G,         RES_SHARED_VGA},
++   {PCI_CHIP_Q35_G,            PCI_CHIP_Q35_G,         RES_SHARED_VGA},
++   {PCI_CHIP_Q33_G,            PCI_CHIP_Q33_G,         RES_SHARED_VGA},
+    {-1,				-1, RES_UNDEFINED }
+ };
+ 
+@@ -598,6 +604,9 @@
+ 	    case PCI_CHIP_I946_GZ:
+ 	    case PCI_CHIP_I965_GM:
+ 	    case PCI_CHIP_I965_GME:
++            case PCI_CHIP_G33_G:
++            case PCI_CHIP_Q35_G:
++            case PCI_CHIP_Q33_G:
+     	       xf86SetEntitySharable(usedChips[i]);
+ 
+     	       /* Allocate an entity private if necessary */		
+--- xf86-video-i810-1.6.5-orig/src/i810_reg.h	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i810_reg.h	2007-07-03 03:24:56.000000000 -0400
+@@ -476,6 +476,10 @@
+ #define PGETBL_SIZE_512KB   (0 << 1)
+ #define PGETBL_SIZE_256KB   (1 << 1)
+ #define PGETBL_SIZE_128KB   (2 << 1)
++/* This is definition for VT-d capability chip's GMCH_CTRL */
++#define VTD_PGETBL_SIZE_MASK	(3 << 8)
++#define PGETBL_SIZE_1M	    	(1 << 8)
++#define PGETBL_SIZE_2M	    	(2 << 8)
+ 
+ 
+ /* Register containing pge table error results, p276
+@@ -885,7 +889,8 @@
+ #define I830_GMCH_MEM_64M	0x1
+ #define I830_GMCH_MEM_128M	0
+ 
+-#define I830_GMCH_GMS_MASK			0x70
++/* Extend mask bits for VT-d capable chip */
++#define I830_GMCH_GMS_MASK			0xF0
+ #define I830_GMCH_GMS_DISABLED		0x00
+ #define I830_GMCH_GMS_LOCAL			0x10
+ #define I830_GMCH_GMS_STOLEN_512	0x20
+@@ -905,6 +910,8 @@
+ #define I855_GMCH_GMS_STOLEN_32M		(0x5 << 4)
+ #define I915G_GMCH_GMS_STOLEN_48M		(0x6 << 4)
+ #define I915G_GMCH_GMS_STOLEN_64M		(0x7 << 4)
++#define I915G_GMCH_GMS_STOLEN_128M		(0x8 << 4)
++#define I915G_GMCH_GMS_STOLEN_256M		(0x9 << 4)
+ 
+ #define I85X_CAPID			0x44
+ #define I85X_VARIANT_MASK			0x7
+--- xf86-video-i810-1.6.5-orig/src/i830_common.h	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_common.h	2007-07-03 03:24:56.000000000 -0400
+@@ -54,7 +54,7 @@
+ #define DRM_I830_DESTROY_HEAP             0x0c
+ #define DRM_I830_SET_VBLANK_PIPE	  0x0d
+ #define DRM_I830_GET_VBLANK_PIPE	  0x0e
+-
++#define DRM_I830_HWS_PAGE_ADDR		  0x11
+ 
+ typedef struct {
+    enum {
+@@ -209,4 +209,9 @@
+ 	int pipe;
+ } drmI830VBlankPipe;
+ 
++typedef struct {
++	int addr;
++	int gart_bus_addr;
++} drmI830HWS;
++
+ #endif /* _I830_DRM_H_ */
+--- xf86-video-i810-1.6.5-orig/src/i830_cursor.c	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_cursor.c	2007-07-03 03:24:56.000000000 -0400
+@@ -86,6 +86,10 @@
+    CARD32 temp;
+ 
+    DPRINTF(PFX, "I830InitHWCursor\n");
++
++   if (!IS_I9XX(pI830))
++      OUTREG(CURSOR_SIZE, (I810_CURSOR_Y << 12) | I810_CURSOR_X);
++
+    /* Initialise the HW cursor registers, leaving the cursor hidden. */
+    if (IS_MOBILE(pI830) || IS_I9XX(pI830)) {
+       temp = INREG(CURSOR_A_CONTROL);
+--- xf86-video-i810-1.6.5-orig/src/i830_dri.c	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_dri.c	2007-07-03 03:24:56.000000000 -0400
+@@ -208,6 +208,24 @@
+    return TRUE;
+ }
+ 
++static Bool
++I830SetHWS(ScrnInfoPtr pScrn, int addr)
++{
++   I830Ptr pI830 = I830PTR(pScrn);
++   drmI830HWS hws;
++
++   hws.addr = addr;
++   hws.gart_bus_addr = pI830->LinearAddr;
++   
++   if (drmCommandWrite(pI830->drmSubFD, DRM_I830_HWS_PAGE_ADDR,
++                       &hws, sizeof(drmI830HWS))) {
++       xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
++                  "G33 status page initialization Failed.\n");
++       return FALSE;
++   }
++
++   return TRUE;
++}
+ 
+ static Bool
+ I830InitVisualConfigs(ScreenPtr pScreen)
+@@ -809,6 +827,13 @@
+       return FALSE;
+    }
+ 
++   if (IS_G33CLASS(pI830)) {
++       if (!I830SetHWS(pScrn, pI830->HWStatus.Start)) {
++           DRICloseScreen(pScreen);
++           return FALSE;
++       }
++   }
++
+    /* init to zero to be safe */
+    sarea->front_handle = 0;
+    sarea->back_handle = 0;
+--- xf86-video-i810-1.6.5-orig/src/i830_driver.c	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_driver.c	2007-07-03 03:24:56.000000000 -0400
+@@ -221,6 +221,9 @@
+    {PCI_CHIP_I946_GZ,		"946GZ"},
+    {PCI_CHIP_I965_GM,		"965GM"},
+    {PCI_CHIP_I965_GME,		"965GME/GLE"},
++   {PCI_CHIP_G33_G,		"G33"},
++   {PCI_CHIP_Q35_G,		"Q35"},
++   {PCI_CHIP_Q33_G,		"Q33"},
+    {-1,				NULL}
+ };
+ 
+@@ -241,6 +244,10 @@
+    {PCI_CHIP_I946_GZ,		PCI_CHIP_I946_GZ,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_GM,		PCI_CHIP_I965_GM,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_GME,		PCI_CHIP_I965_GME,	RES_SHARED_VGA},
++   {PCI_CHIP_G33_G,		PCI_CHIP_G33_G,		RES_SHARED_VGA},
++   {PCI_CHIP_Q35_G,		PCI_CHIP_Q35_G,		RES_SHARED_VGA},
++   {PCI_CHIP_Q33_G,		PCI_CHIP_Q33_G,		RES_SHARED_VGA},
++   {PCI_CHIP_I965_GM,		PCI_CHIP_I965_GM,	RES_SHARED_VGA},
+    {-1,				-1,			RES_UNDEFINED}
+ };
+ 
+@@ -3039,6 +3046,19 @@
+       default:
+         FatalError("Unknown GTT size value: %08x\n", (int)INREG(PGETBL_CTL));
+       }
++   } else if (IS_G33CLASS(pI830)) {
++       /* Bearlake's GTT size is detect in GMCH_CTRL */
++       switch (gmch_ctrl & VTD_PGETBL_SIZE_MASK) {
++       case PGETBL_SIZE_1M:
++	    gtt_size = 1024;
++	    break;
++       case PGETBL_SIZE_2M:
++	    gtt_size = 2048;
++	    break;
++       default:
++	 FatalError("Unknown GTT size value: %08x\n", 
++		 (int)(gmch_ctrl & VTD_PGETBL_SIZE_MASK));
++       }
+    } else {
+       /* Older chipsets only had GTT appropriately sized for the aperture. */
+       gtt_size = pI830->FbMapSize / (1024*1024);
+@@ -3076,6 +3096,14 @@
+ 	 if (IS_I9XX(pI830))
+ 	    memsize = MB(64) - KB(range);
+ 	 break;
++      case I915G_GMCH_GMS_STOLEN_128M:
++	 if (IS_G33CLASS(pI830))
++	     memsize = MB(128) - KB(range);
++	 break;
++      case I915G_GMCH_GMS_STOLEN_256M:
++	 if (IS_G33CLASS(pI830))
++	     memsize = MB(256) - KB(range);
++	 break;
+       }
+    } else {
+       switch (gmch_ctrl & I830_GMCH_GMS_MASK) {
+@@ -3997,6 +4025,15 @@
+    case PCI_CHIP_I965_GME:
+       chipname = "965GME/GLE";
+       break;
++   case PCI_CHIP_G33_G:
++      chipname = "G33";
++      break;
++   case PCI_CHIP_Q35_G:
++      chipname = "Q35";
++      break;
++   case PCI_CHIP_Q33_G:
++      chipname = "Q33";
++      break;
+    default:
+       chipname = "unknown chipset";
+       break;
+@@ -4852,7 +4889,7 @@
+    else
+       pI830->CursorNeedsPhysical = FALSE;
+ 
+-   if (IS_I965G(pI830))
++   if (IS_I965G(pI830) || IS_G33CLASS(pI830))
+       pI830->CursorNeedsPhysical = FALSE;
+ 
+    /* Force ring buffer to be in low memory for all chipsets */
+@@ -8040,7 +8077,6 @@
+    ResetState(pScrn, FALSE);
+    SetHWOperatingState(pScrn);
+ 
+-   pScrn->AdjustFrame(scrnIndex, pScrn->frameX0, pScrn->frameY0, 0);
+ 
+    if (!pI830->starting)
+       I830DetectMonitorChange(pScrn);
+@@ -8055,6 +8091,7 @@
+    ResetState(pScrn, TRUE);
+    SetHWOperatingState(pScrn);
+ 
++   pScrn->AdjustFrame(scrnIndex, pScrn->frameX0, pScrn->frameY0, 0);
+ #if SAVERESTORE_HWSTATE
+    RestoreHWOperatingState(pScrn);
+ #endif
+@@ -8326,8 +8363,6 @@
+       pI830->CursorInfoRec = 0;
+    }
+ 
+-   i830_reset_allocations(pScrn);
+-
+    if (I830IsPrimary(pScrn)) {
+       xf86GARTCloseScreen(scrnIndex);
+ 
+@@ -8558,6 +8593,7 @@
+ 			"Requested display devices 0x%lx.\n", 
+ 		    (unsigned long) temp);
+ 
++
+          /* If the BIOS doesn't flip between CRT, LFP and CRT+LFP we fake
+           * it here as it seems some just flip between CRT and LFP. Ugh!
+           *
+--- xf86-video-i810-1.6.5-orig/src/i830.h	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830.h	2007-07-03 03:24:56.000000000 -0400
+@@ -289,6 +289,8 @@
+    unsigned int front_tiled;
+    unsigned int back_tiled;
+    unsigned int depth_tiled;
++   /* XXX for bearlake hw status page*/
++   I830MemRange HWStatus;
+    unsigned int rotated_tiled;
+    unsigned int rotated2_tiled;
+ #endif
+--- xf86-video-i810-1.6.5-orig/src/i830_memory.c	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_memory.c	2007-07-03 03:24:56.000000000 -0400
+@@ -1149,6 +1149,37 @@
+ }
+ 
+ Bool
++I830AllocateHWStatusPage(ScrnInfoPtr pScrn, const int flags)
++{
++#define HWS_PAGESIZE (4*1024)
++    I830Ptr pI830 = I830PTR(pScrn);
++    unsigned long size, alloced, align;
++    Bool dryrun = ((flags & ALLOCATE_DRY_RUN) != 0);
++    int verbosity = dryrun ? 4 : 1;
++    const char *s = dryrun ? "[dryrun] " : "";
++
++    memset(&(pI830->HWStatus), 0, sizeof(I830MemRange));
++    pI830->HWStatus.Key = -1;
++    size = ROUND_TO_PAGE(HWS_PAGESIZE);
++    align = GTT_PAGE_SIZE;
++    alloced = I830AllocVidMem(pScrn, &(pI830->HWStatus),
++				&(pI830->StolenPool), size, align,
++				flags | FROM_ANYWHERE | ALLOCATE_AT_TOP);
++    if (alloced < size) {
++        if (!dryrun) {
++            xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
++		    "G33: Failed to allocate hw status buffer.\n");
++        }
++        return FALSE;
++    }
++    xf86DrvMsgVerb(pScrn->scrnIndex, X_INFO, verbosity,
++        "%sAllocated %ld kB for the G33 hw status buffer at 0x%lx\n", s, 
++ 		alloced / 1024, pI830->HWStatus.Start);
++        
++    return TRUE;
++}
++
++Bool
+ I830AllocateBackBuffer(ScrnInfoPtr pScrn, const int flags)
+ {
+    I830Ptr pI830 = I830PTR(pScrn);
+@@ -1351,6 +1382,11 @@
+ 		  "%sAllocated %ld kB for the logical context at 0x%lx.\n", s,
+ 		  alloced / 1024, pI830->ContextMem.Start);
+ 
++   if (IS_G33CLASS(pI830)) {
++       if (!I830AllocateHWStatusPage(pScrn, flags))
++           return FALSE;
++   }
++
+    if (!I830AllocateBackBuffer(pScrn, flags))
+       return FALSE;
+ 
+@@ -1910,6 +1946,8 @@
+       if (pI830->directRenderingEnabled) {
+ 	 if (!BindMemRange(pScrn, &(pI830->ContextMem)))
+ 	    return FALSE;
++	 if (IS_G33CLASS(pI830) && !BindMemRange(pScrn, &(pI830->HWStatus)))
++	    return FALSE;
+ 	 if (!BindMemRange(pScrn, &(pI830->BackBuffer)))
+ 	    return FALSE;
+ 	 if (!BindMemRange(pScrn, &(pI830->DepthBuffer)))
+@@ -1994,6 +2032,8 @@
+       if (pI830->directRenderingEnabled) {
+ 	 if (!UnbindMemRange(pScrn, &(pI830->ContextMem)))
+ 	    return FALSE;
++  	 if (IS_G33CLASS(pI830) && !UnbindMemRange(pScrn, &(pI830->HWStatus)))
++	    return FALSE;
+ 	 if (!UnbindMemRange(pScrn, &(pI830->BackBuffer)))
+ 	    return FALSE;
+ 	 if (!UnbindMemRange(pScrn, &(pI830->DepthBuffer)))
+--- xf86-video-i810-1.6.5-orig/src/i830_video.c	2007-07-03 03:18:35.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_video.c	2007-07-03 03:24:56.000000000 -0400
+@@ -461,7 +461,7 @@
+    xvContrast = MAKE_ATOM("XV_CONTRAST");
+ 
+    /* Set up overlay video if we can do it at this depth. */
+-   if (!IS_I965G(pI830) && pScrn->bitsPerPixel != 8) {
++   if (!IS_I965G(pI830) && !IS_G33CLASS(pI830) && pScrn->bitsPerPixel != 8) {
+       overlayAdaptor = I830SetupImageVideoOverlay(pScreen);
+       if (overlayAdaptor != NULL) {
+ 	 adaptors[num_adaptors++] = overlayAdaptor;

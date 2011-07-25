@@ -1,0 +1,63 @@
+--- xf86-video-intel-20080119/src/i830_lvds.c.lvds	2008-01-19 18:00:00.000000000 -0500
++++ xf86-video-intel-20080119/src/i830_lvds.c	2008-02-21 12:34:35.000000000 -0500
+@@ -37,6 +37,7 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <dirent.h>
+ 
+ #include "xf86.h"
+ #include "i830.h"
+@@ -567,13 +568,49 @@
+ /**
+  * Detect the LVDS connection.
+  *
+- * This always returns OUTPUT_STATUS_CONNECTED.  This output should only have
+- * been set up if the LVDS was actually connected anyway.
++ * This is utterly goofy, but there's no good way to do it.
+  */
+ static xf86OutputStatus
+ i830_lvds_detect(xf86OutputPtr output)
+ {
+-    return XF86OutputStatusConnected;
++    char buf[80];
++    DIR *lid_collection_dir = NULL;
++    struct dirent *ent;
++    int state_fd = -1;
++    xf86OutputStatus ret = XF86OutputStatusConnected;
++
++    lid_collection_dir = opendir("/proc/acpi/button/lid");
++    if (!lid_collection_dir)
++	return ret;
++
++    while (1) {
++	ent = readdir(lid_collection_dir);
++	if (!ent)
++	    goto bail;
++	if (ent->d_name[0] == '.')
++	    continue;
++	break;
++    }
++
++    sprintf(buf, "/proc/acpi/button/lid/%s/state", ent->d_name);
++
++    state_fd = open(buf, O_RDONLY);
++    if (state_fd == -1)
++	goto bail;
++
++    memset(buf, 0, 80);
++    read(state_fd, buf, 80);
++
++    if (strstr(buf, "closed"))
++	ret = XF86OutputStatusDisconnected;
++
++bail:
++    if (state_fd != -1)
++	close(state_fd);
++    if (lid_collection_dir)
++	closedir(lid_collection_dir);
++
++    return ret;
+ }
+ 
+ /**

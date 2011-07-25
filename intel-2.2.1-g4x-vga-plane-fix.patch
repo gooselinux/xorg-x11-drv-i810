@@ -1,0 +1,70 @@
+From 3bf37544ac0717ad193f0ad15957f5c3937a646e Mon Sep 17 00:00:00 2001
+From: Zhenyu Wang <zhenyuw@linux.intel.com>
+Date: Mon, 10 Aug 2009 18:08:18 +0800
+Subject: [PATCH] Fix VGA plane disabling
+
+Only apply on G4X for SR01 bit5 set before VGA plane disable, and
+restore behavior back for other chips.
+
+Signed-off-by: Zhenyu Wang <zhenyuw@linux.intel.com>
+---
+ src/i830_display.c |   38 ++++++++++++++++++++------------------
+ 1 files changed, 20 insertions(+), 18 deletions(-)
+
+diff --git a/src/i830_display.c b/src/i830_display.c
+index 59ededc..9f76177 100644
+--- a/src/i830_display.c
++++ b/src/i830_display.c
+@@ -1076,29 +1076,31 @@ i830_disable_vga_plane (xf86CrtcPtr crtc)
+ {
+     ScrnInfoPtr pScrn = crtc->scrn;
+     I830Ptr pI830 = I830PTR(pScrn);
+-    uint32_t vgacntrl = INREG(VGACNTRL);
+     uint8_t sr01;
+ 
+-    if (vgacntrl & VGA_DISP_DISABLE)
+-	return;
++    /* 
++     * Bug #17235: G4X machine needs following steps
++     * before disable VGA.
++     * - set bit 5 of SR01;
++     * - Wait 30us;
++     * - disable vga plane;
++     * - restore SR01;
++     */
++    if (IS_G4X(pI830)) {
++	OUTREG8(SRX, 1);
++	sr01 = INREG8(SRX + 1);
++	OUTREG8(SRX + 1, sr01 | (1 << 5));
++	usleep(30);
++    }
+ 
+-    /*
+-       Set bit 5 of SR01;
+-       Wait 30us;
+-       */
+-    OUTREG8(SRX, 1);
+-    sr01 = INREG8(SRX + 1);
+-    OUTREG8(SRX + 1, sr01 | (1 << 5));
+-    usleep(30);
+-    /* disable center mode on 965GM and G4X platform */
+-    if (IS_I965GM(pI830) || IS_G4X(pI830))
+-        vgacntrl &= ~(3 << 24);
+-
+-    vgacntrl |= VGA_DISP_DISABLE;
+-
+-    OUTREG(VGACNTRL, vgacntrl);
++    OUTREG(VGACNTRL, VGA_DISP_DISABLE);
+     i830WaitForVblank(pScrn);
+ 
++    /* restore SR01 */
++    if (IS_G4X(pI830)) {
++	OUTREG8(SRX, 1);
++	OUTREG8(SRX + 1, sr01);
++    }
+ }
+ 
+ static void
+-- 
+1.5.6.5
+

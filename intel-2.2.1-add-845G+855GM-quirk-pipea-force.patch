@@ -1,0 +1,27 @@
+--- xf86-video-intel-2.2.1/src/i830_quirks.c.add-845G-855GM-quirk-pipea-force	2008-09-08 15:40:09.000000000 +0100
++++ xf86-video-intel-2.2.1/src/i830_quirks.c	2008-09-08 16:17:27.000000000 +0100
+@@ -253,6 +253,10 @@
+     /* Sony vaio PCG-r600HFP (fix bug 13722) */
+     { PCI_CHIP_I830_M, 0x104d, 0x8100, quirk_ivch_dvob },
+ 
++    /* 855 & before need to leave pipe A & dpll A up */
++    { PCI_CHIP_I855_GM, SUBSYS_ANY, SUBSYS_ANY, quirk_pipea_force },
++    { PCI_CHIP_845_G, SUBSYS_ANY, SUBSYS_ANY, quirk_pipea_force },
++
+     { 0, 0, 0, NULL },
+ };
+ 
+@@ -286,9 +290,10 @@
+ 
+     while (p && p->chipType != 0) {
+ 	if (DEVICE_ID(pI830->PciInfo) == p->chipType &&
+-		SUBVENDOR_ID(pI830->PciInfo) == p->subsysVendor &&
+-		(SUBSYS_ID(pI830->PciInfo) == p->subsysCard ||
+-		 p->subsysCard == SUBSYS_ANY))
++	    (SUBVENDOR_ID(pI830->PciInfo) == p->subsysVendor ||
++	     p->subsysVendor == SUBSYS_ANY) &&
++	    (SUBSYS_ID(pI830->PciInfo) == p->subsysCard ||
++	     p->subsysCard == SUBSYS_ANY))
+ 	    p->hook(pI830);
+ 	++p;
+     }

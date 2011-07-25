@@ -1,0 +1,33 @@
+From 5075548f5eba11f9acb186c0903612178f5533c6 Mon Sep 17 00:00:00 2001
+From: Zhenyu Wang <zhenyuw@linux.intel.com>
+Date: Fri, 5 Jun 2009 12:59:07 +0800
+Subject: [PATCH 3/5] Disable composite on new chipset for now
+
+This depends on updated intel-gen4asm be ready for new chip.
+
+Signed-off-by: Zhenyu Wang <zhenyuw@linux.intel.com>
+---
+ src/i830_exa.c |    7 +++++++
+ 1 files changed, 7 insertions(+), 0 deletions(-)
+
+diff --git a/src/i830_exa.c b/src/i830_exa.c
+index 32c55dd..f8a2432 100644
+--- a/src/i830_exa.c
++++ b/src/i830_exa.c
+@@ -584,6 +584,13 @@ I830EXAInit(ScreenPtr pScreen)
+     pI830->EXADriverPtr->PixmapIsOffscreen = i830_exa_pixmap_is_offscreen;
+ #endif
+ 
++    if (!IS_IGDNG(pI830)) {
++	pI830->EXADriverPtr->CheckComposite = NULL;
++    	pI830->EXADriverPtr->PrepareComposite = NULL;
++    	pI830->EXADriverPtr->Composite = NULL;
++    	pI830->EXADriverPtr->DoneComposite = NULL;
++    }
++
+     /* UploadToScreen/DownloadFromScreen */
+     if (0)
+ 	pI830->EXADriverPtr->UploadToScreen = i830_upload_to_screen;
+-- 
+1.6.5.rc2
+

@@ -1,0 +1,1147 @@
+--- xf86-video-i810-1.6.5/src/i830_cursor.c.crestline	2006-08-09 18:37:16.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_cursor.c	2007-06-19 14:40:07.000000000 -0400
+@@ -520,11 +520,17 @@
+    x -= pScrn->frameX0;
+    y -= pScrn->frameY0;
+ 
+-   /* Clamp the cursor position to the visible screen area */
+-   if (x >= pScrn->currentMode->HDisplay) x = pScrn->currentMode->HDisplay - 1;
+-   if (y >= pScrn->currentMode->VDisplay) y = pScrn->currentMode->VDisplay - 1;
+-   if (x <= -I810_CURSOR_X) x = -I810_CURSOR_X + 1;
+-   if (y <= -I810_CURSOR_Y) y = -I810_CURSOR_Y + 1;
++   if (pScrn->currentMode) {
++      /* Clamp the cursor position to the visible screen area */
++      if (x >= pScrn->currentMode->HDisplay) x = pScrn->currentMode->HDisplay - 1;
++      if (y >= pScrn->currentMode->VDisplay) y = pScrn->currentMode->VDisplay - 1;
++      if (x <= -I810_CURSOR_X) x = -I810_CURSOR_X + 1;
++      if (y <= -I810_CURSOR_Y) y = -I810_CURSOR_Y + 1;
++   } else {
++      /* Can't ensure the cursor will be visible, so hide it */
++      hide = TRUE;
++      show = FALSE;
++   }
+ 
+ #if 0
+    /*
+@@ -655,7 +661,7 @@
+       temp &= ~(CURSOR_FORMAT_MASK | CURSOR_GAMMA_ENABLE);
+       temp |= CURSOR_ENABLE;
+       if (pI830->CursorIsARGB)
+-         temp |= CURSOR_FORMAT_ARGB;
++         temp |= CURSOR_FORMAT_ARGB | CURSOR_GAMMA_ENABLE;
+       else 
+          temp |= CURSOR_FORMAT_3C;
+       OUTREG(CURSOR_CONTROL, temp);
+--- xf86-video-i810-1.6.5/src/i830_memory.c.crestline	2007-06-19 14:40:07.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_memory.c	2007-06-19 14:40:07.000000000 -0400
+@@ -610,6 +610,13 @@
+    return extra;
+ }
+ 
++/* This is the 2D rendering vertical coordinate limit.  We can ignore
++ * the 3D rendering limits in our 2d pixmap cache allocation, because XAA
++ * doesn't do any 3D rendering to/from the cache lines when using an offset
++ * at the start of framebuffer.
++ */
++#define MAX_2D_HEIGHT          65536
++
+ /*
+  * Allocate memory for 2D operation.  This includes the (front) framebuffer,
+  * ring buffer, scratch memory, HW cursor.
+@@ -812,25 +819,19 @@
+ 		    "maxCacheLines < 0 in I830Allocate2DMemory()\n");
+ 	 maxCacheLines = 0;
+       }
+-      if (maxCacheLines > (MAX_DISPLAY_HEIGHT - pScrn->virtualY))
+-	 maxCacheLines = MAX_DISPLAY_HEIGHT - pScrn->virtualY;
++      if (maxCacheLines > (MAX_2D_HEIGHT - pScrn->virtualY))
++	 maxCacheLines = MAX_2D_HEIGHT - pScrn->virtualY;
+ 
+       if (pI830->CacheLines >= 0) {
+ 	 cacheLines = pI830->CacheLines;
+       } else {
+-#if 1
+-	 /* Make sure there is enough for two DVD sized YUV buffers */
+-	 cacheLines = (pScrn->depth == 24) ? 256 : 384;
+-	 if (pScrn->displayWidth <= 1024)
+-	    cacheLines *= 2;
+-#else
+-	 /*
+-	  * Make sure there is enough for two DVD sized YUV buffers.
+-	  * Make that 1.5MB, which is around what was allocated with
+-	  * the old algorithm
+-	  */
+-	 cacheLines = (MB(1) + KB(512)) / pI830->cpp / pScrn->displayWidth;
+-#endif
++         int size;
++
++         size = 3 * lineSize * pScrn->virtualY;
++         size += 1920 * 1088 * 2 * 2;
++         size = ROUND_TO_PAGE(size);
++
++         cacheLines = (size + lineSize - 1) / lineSize;
+       }
+       if (cacheLines > maxCacheLines)
+ 	 cacheLines = maxCacheLines;
+@@ -897,8 +898,8 @@
+       maxFb = pI830->FrontBuffer.Size + extra;
+       lineSize = pScrn->displayWidth * pI830->cpp;
+       maxFb = ROUND_DOWN_TO(maxFb, lineSize);
+-      if (maxFb > lineSize * MAX_DISPLAY_HEIGHT)
+-	 maxFb = lineSize * MAX_DISPLAY_HEIGHT;
++      if (maxFb > lineSize * MAX_2D_HEIGHT)
++	 maxFb = lineSize * MAX_2D_HEIGHT;
+       if (0/*maxFb > pI830->FrontBuffer.Size*/) {
+ 	 unsigned long oldsize;
+ 	 /*
+--- xf86-video-i810-1.6.5/src/common.h.crestline	2006-08-08 18:51:25.000000000 -0400
++++ xf86-video-i810-1.6.5/src/common.h	2007-06-19 14:40:07.000000000 -0400
+@@ -278,6 +278,7 @@
+ 
+ #ifndef PCI_CHIP_I945_GM
+ #define PCI_CHIP_I945_GM        0x27A2
++#define PCI_CHIP_I945_GME       0x27AE
+ #define PCI_CHIP_I945_GM_BRIDGE 0x27A0
+ #endif
+ 
+@@ -296,6 +297,13 @@
+ #define PCI_CHIP_I965_G_BRIDGE 	0x29A0
+ #endif
+ 
++
++#ifndef PCI_CHIP_I965_GM
++#define PCI_CHIP_I965_GM		0x2A02
++#define PCI_CHIP_I965_GME		0x2A12
++#define PCI_CHIP_I965_GM_BRIDGE 	0x2A00
++#endif
++
+ #ifndef PCI_CHIP_I946_GZ
+ #define PCI_CHIP_I946_GZ		0x2972
+ #define PCI_CHIP_I946_GZ_BRIDGE 	0x2970
+@@ -315,11 +323,12 @@
+ #define IS_I915G(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I915_G || pI810->PciInfo->chipType == PCI_CHIP_E7221_G)
+ #define IS_I915GM(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I915_GM)
+ #define IS_I945G(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I945_G)
+-#define IS_I945GM(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I945_GM)
+-#define IS_I965G(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I965_G || pI810->PciInfo->chipType == PCI_CHIP_I965_G_1 || pI810->PciInfo->chipType == PCI_CHIP_I965_Q || pI810->PciInfo->chipType == PCI_CHIP_I946_GZ)
++#define IS_I945GM(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I945_GM || pI810->PciInfo->chipType == PCI_CHIP_I945_GME)
++#define IS_I965GM(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I965_GM || pI810->PciInfo->chipType == PCI_CHIP_I965_GME)
++#define IS_I965G(pI810) (pI810->PciInfo->chipType == PCI_CHIP_I965_G || pI810->PciInfo->chipType == PCI_CHIP_I965_G_1 || pI810->PciInfo->chipType == PCI_CHIP_I965_Q || pI810->PciInfo->chipType == PCI_CHIP_I946_GZ || pI810->PciInfo->chipType == PCI_CHIP_I965_GM || pI810->PciInfo->chipType == PCI_CHIP_I965_GME)
+ #define IS_I9XX(pI810) (IS_I915G(pI810) || IS_I915GM(pI810) || IS_I945G(pI810) || IS_I945GM(pI810) || IS_I965G(pI810))
+ 
+-#define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810))
++#define IS_MOBILE(pI810) (IS_I830(pI810) || IS_I85X(pI810) || IS_I915GM(pI810) || IS_I945GM(pI810) || IS_I965GM(pI810))
+ 
+ #define GTT_PAGE_SIZE			KB(4)
+ #define ROUND_TO(x, y)			(((x) + (y) - 1) / (y) * (y))
+--- xf86-video-i810-1.6.5/src/i810_accel.c.crestline	2006-06-20 19:16:18.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i810_accel.c	2007-06-19 14:40:07.000000000 -0400
+@@ -597,7 +597,8 @@
+    if (pI810->LpRing->space < 0)
+       pI810->LpRing->space += pI810->LpRing->mem.Size;
+ 
+-   pI810->AccelInfoRec->NeedToSync = TRUE;
++   if (pI810->AccelInfoRec)
++      pI810->AccelInfoRec->NeedToSync = TRUE;
+ }
+ 
+ /* Emit on gaining VT?
+--- xf86-video-i810-1.6.5/src/i810_reg.h.crestline	2007-06-19 14:40:07.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i810_reg.h	2007-06-19 14:40:07.000000000 -0400
+@@ -471,6 +471,12 @@
+ #define PGETBL_ADDR_MASK    0xFFFFF000
+ #define PGETBL_ENABLE_MASK  0x00000001
+ #define PGETBL_ENABLED      0x00000001
++/** Added in 965G, this field has the actual size of the global GTT */
++#define PGETBL_SIZE_MASK    0x0000000e
++#define PGETBL_SIZE_512KB   (0 << 1)
++#define PGETBL_SIZE_256KB   (1 << 1)
++#define PGETBL_SIZE_128KB   (2 << 1)
++
+ 
+ /* Register containing pge table error results, p276
+  */
+--- xf86-video-i810-1.6.5/src/i830_driver.c.crestline	2007-06-19 14:40:07.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_driver.c	2007-06-19 15:03:12.000000000 -0400
+@@ -214,10 +214,13 @@
+    {PCI_CHIP_I915_GM,		"915GM"},
+    {PCI_CHIP_I945_G,		"945G"},
+    {PCI_CHIP_I945_GM,		"945GM"},
++   {PCI_CHIP_I945_GME,		"945GME"},
+    {PCI_CHIP_I965_G,		"965G"},
+    {PCI_CHIP_I965_G_1,		"965G"},
+    {PCI_CHIP_I965_Q,		"965Q"},
+    {PCI_CHIP_I946_GZ,		"946GZ"},
++   {PCI_CHIP_I965_GM,		"965GM"},
++   {PCI_CHIP_I965_GME,		"965GME/GLE"},
+    {-1,				NULL}
+ };
+ 
+@@ -231,10 +234,13 @@
+    {PCI_CHIP_I915_GM,		PCI_CHIP_I915_GM,	RES_SHARED_VGA},
+    {PCI_CHIP_I945_G,		PCI_CHIP_I945_G,	RES_SHARED_VGA},
+    {PCI_CHIP_I945_GM,		PCI_CHIP_I945_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_I945_GME,		PCI_CHIP_I945_GME,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_G,		PCI_CHIP_I965_G,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_G_1,		PCI_CHIP_I965_G_1,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_Q,		PCI_CHIP_I965_Q,	RES_SHARED_VGA},
+    {PCI_CHIP_I946_GZ,		PCI_CHIP_I946_GZ,	RES_SHARED_VGA},
++   {PCI_CHIP_I965_GM,		PCI_CHIP_I965_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_I965_GME,		PCI_CHIP_I965_GME,	RES_SHARED_VGA},
+    {-1,				-1,			RES_UNDEFINED}
+ };
+ 
+@@ -2014,9 +2020,6 @@
+        pI830->I830XineramaVY = 0;
+ 
+     }
+-
+-    I830UpdateXineramaScreenInfo(pScrn);
+-
+ }
+ 
+ static void
+@@ -2379,42 +2382,6 @@
+ }
+ #endif
+ 
+-static Bool
+-GetModeSupport(ScrnInfoPtr pScrn, int modePipeA, int modePipeB,
+-	       int devicesPipeA, int devicesPipeB, int *maxBandwidth,
+-	       int *bandwidthPipeA, int *bandwidthPipeB)
+-{
+-   vbeInfoPtr pVbe = I830PTR(pScrn)->pVbe;
+-
+-   DPRINTF(PFX, "GetModeSupport: modes 0x%x, 0x%x, devices: 0x%x, 0x%x\n",
+-	   modePipeA, modePipeB, devicesPipeA, devicesPipeB);
+-
+-   /* Only 8-bit mode numbers are supported. */
+-   if ((modePipeA & 0x100) || (modePipeB & 0x100))
+-      return FALSE;
+-
+-   pVbe->pInt10->num = 0x10;
+-   pVbe->pInt10->ax = 0x5f28;
+-   pVbe->pInt10->bx = (modePipeA & 0xff) | ((modePipeB & 0xff) << 8);
+-   if ((devicesPipeA & 0x80) || (devicesPipeB & 0x80))
+-      pVbe->pInt10->cx = 0x8000;
+-   else
+-      pVbe->pInt10->cx = (devicesPipeA & 0xff) | ((devicesPipeB & 0xff) << 8);
+-
+-   xf86ExecX86int10_wrapper(pVbe->pInt10, pScrn);
+-   if (Check5fStatus(pScrn, 0x5f28, pVbe->pInt10->ax)) {
+-      if (maxBandwidth)
+-	 *maxBandwidth = pVbe->pInt10->cx;
+-      if (bandwidthPipeA)
+-	 *bandwidthPipeA = pVbe->pInt10->dx & 0xffff;
+-      /* XXX For XFree86 4.2.0 and earlier, ->dx is truncated to 16 bits. */
+-      if (bandwidthPipeB)
+-	 *bandwidthPipeB = (pVbe->pInt10->dx >> 16) & 0xffff;
+-      return TRUE;
+-   } else
+-      return FALSE;
+-}
+-
+ #if 0
+ static int
+ GetLFPCompMode(ScrnInfoPtr pScrn)
+@@ -2573,37 +2540,15 @@
+ I830Set640x480(ScrnInfoPtr pScrn)
+ {
+    I830Ptr pI830 = I830PTR(pScrn);
+-   int m = 0x30; /* 640x480 8bpp */
++   int m;
+ 
+-   switch (pScrn->depth) {
+-   case 15:
+-	 m = 0x40;
+-	 break;
+-   case 16:
+-	 m = 0x41;
+-	 break;
+-   case 24:
+-	 m = 0x50;
+-	 break;
+-   }
+-
+-   m |= (1 << 15) | (1 << 14);
++   /* 640x480 8bpp */
++   m = 0x30 | (1 << 15) | (1 << 14);
+    if (VBESetVBEMode(pI830->pVbe, m, NULL))
+ 	   return TRUE;
+ 
+-
+    /* if the first failed, let's try the next - usually 800x600 */
+-   m = 0x32;
+-   switch (pScrn->depth) {
+-   case 15:
+-   case 16:
+-	 m = 0x42;
+-	 break;
+-   case 24:
+-	 m = 0x52;
+-	 break;
+-   }
+-   m |= (1 << 15) | (1 << 14);
++   m = 0x32 | (1 << 15) | (1 << 14);
+ 
+    if (VBESetVBEMode(pI830->pVbe, m, NULL))
+ 	   return TRUE;
+@@ -3070,18 +3015,41 @@
+    I830Ptr pI830 = I830PTR(pScrn);
+    PCITAG bridge;
+    CARD16 gmch_ctrl;
+-   int memsize = 0;
++   int memsize = 0, gtt_size;
+    int range;
+ 
+    bridge = pciTag(0, 0, 0);		/* This is always the host bridge */
+    gmch_ctrl = pciReadWord(bridge, I830_GMCH_CTRL);
+ 
+-   /* We need to reduce the stolen size, by the GTT and the popup.
+-    * The GTT varying according the the FbMapSize and the popup is 4KB. */
+-   if (IS_I965G(pI830))
+-      range = 512 + 4; /* Fixed 512KB size for i965 */
+-   else
+-      range = (pI830->FbMapSize / MB(1)) + 4;
++   if (IS_I965G(pI830)) {
++      /* The 965 may have a GTT that is actually larger than is necessary
++       * to cover the aperture, so check the hardware's reporting of the
++       * GTT size.
++       */
++      switch (INREG(PGETBL_CTL) & PGETBL_SIZE_MASK) {
++      case PGETBL_SIZE_512KB:
++        gtt_size = 512;
++        break;
++      case PGETBL_SIZE_256KB:
++        gtt_size = 256;
++        break;
++      case PGETBL_SIZE_128KB:
++        gtt_size = 128;
++        break;
++      default:
++        FatalError("Unknown GTT size value: %08x\n", (int)INREG(PGETBL_CTL));
++      }
++   } else {
++      /* Older chipsets only had GTT appropriately sized for the aperture. */
++      gtt_size = pI830->FbMapSize / (1024*1024);
++   }
++
++   xf86DrvMsg(pScrn->scrnIndex, X_INFO, "detected %d kB GTT.\n", gtt_size);
++
++   /* The stolen memory has the GTT at the top, and the 4KB popup below that.
++    * Everything else can be freely used by the graphics driver.
++    */
++   range = gtt_size + 4;
+ 
+    if (IS_I85X(pI830) || IS_I865G(pI830) || IS_I9XX(pI830)) {
+       switch (gmch_ctrl & I830_GMCH_GMS_MASK) {
+@@ -4010,6 +3978,9 @@
+    case PCI_CHIP_I945_GM:
+       chipname = "945GM";
+       break;
++   case PCI_CHIP_I945_GME:
++      chipname = "945GME";
++      break;
+    case PCI_CHIP_I965_G:
+    case PCI_CHIP_I965_G_1:
+       chipname = "965G";
+@@ -4020,6 +3991,12 @@
+    case PCI_CHIP_I946_GZ:
+       chipname = "946GZ";
+       break;
++   case PCI_CHIP_I965_GM:
++      chipname = "965GM";
++      break;
++   case PCI_CHIP_I965_GME:
++      chipname = "965GME/GLE";
++      break;
+    default:
+       chipname = "unknown chipset";
+       break;
+@@ -4726,7 +4703,7 @@
+     * or, at least it's meant to..... alas it doesn't seem to always work.
+     */
+    if (pI830->devicePresence) {
+-      int req, att, enc;
++      int req = 0, att = 0, enc = 0;
+       GetDevicePresence(pScrn, &req, &att, &enc);
+       for (i = 0; i < NumDisplayTypes; i++) {
+          xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+@@ -5443,6 +5420,16 @@
+ #endif
+       pI830->disableTiling = TRUE; /* no DRI - so disableTiling */
+ 
++   if (pScrn->displayWidth >= 4096) {
++      xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "Cannot support > 1024x768 in leftof/rightof configurations. disabling DRI.\n");
++      pI830->directRenderingDisabled = TRUE;
++   }
++
++   if (pScrn->virtualY > 2048) {
++      xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "Cannot support > 2048 vertical lines. disabling acceleration.\n");
++      pI830->noAccel = TRUE;
++   }
++
+    pI830->displayWidth = pScrn->displayWidth;
+ 
+    SetPipeAccess(pScrn);
+@@ -6508,17 +6495,6 @@
+    xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Mode bandwidth is %d Mpixel/s\n",
+ 	      pMode->HDisplay * pMode->VDisplay * refresh / 1000000);
+ 
+-   {
+-      int maxBandwidth, bandwidthA, bandwidthB;
+-
+-      if (GetModeSupport(pScrn, 0x80, 0x80, 0x80, 0x80,
+-			&maxBandwidth, &bandwidthA, &bandwidthB)) {
+-	 xf86DrvMsg(pScrn->scrnIndex, X_INFO, "maxBandwidth is %d Mbyte/s, "
+-		    "pipe bandwidths are %d Mbyte/s, %d Mbyte/s\n",
+-		    maxBandwidth, bandwidthA, bandwidthB);
+-      }
+-   }
+-
+ #if 0
+    {
+       int ret;
+@@ -6960,7 +6936,7 @@
+    I830Ptr pI830 = I830PTR(pScrn);
+    CARD32 ctx_addr;
+ 
+-   if (pI830->noAccel)
++   if (pI830->noAccel || !I830IsPrimary(pScrn))
+       return;
+ 
+    ctx_addr = pI830->ContextMem.Start;
+@@ -7441,6 +7417,9 @@
+       xf86DrvMsg(pScrn->scrnIndex, X_INFO, "libshadow is version %d.%d.%d, required 1.1.0 or greater for rotation.\n",pI830->shadowReq.majorversion,pI830->shadowReq.minorversion,pI830->shadowReq.patchlevel);
+    }
+ 
++   /* Call this unconditionally, as it also sets some fields in the SAREA */
++   I830UpdateXineramaScreenInfo(pScrn);
++
+    if (serverGeneration == 1)
+       xf86ShowUnusedOptions(pScrn->scrnIndex, pScrn->options);
+ 
+@@ -8013,7 +7992,11 @@
+       * the Video BIOS with our saved devices, and only when that fails,
+       * we'll warm boot it.
+       */
+-      if (!I830Set640x480(pScrn)) {
++      /* Check pipe conf registers or possibly HTOTAL/VTOTAL for 0x00000000) */
++      CARD32 temp;
++      Bool set = I830Set640x480(pScrn);
++      temp = pI830->pipe ? INREG(PIPEBCONF) : INREG(PIPEACONF);
++      if (!set || !(temp & 0x80000000)) {
+          xf86Int10InfoPtr pInt;
+ 
+          xf86DrvMsg(pScrn->scrnIndex, X_INFO, 
+@@ -8057,6 +8040,8 @@
+    ResetState(pScrn, FALSE);
+    SetHWOperatingState(pScrn);
+ 
++   pScrn->AdjustFrame(scrnIndex, pScrn->frameX0, pScrn->frameY0, 0);
++
+    if (!pI830->starting)
+       I830DetectMonitorChange(pScrn);
+ 	    
+@@ -8070,8 +8055,6 @@
+    ResetState(pScrn, TRUE);
+    SetHWOperatingState(pScrn);
+ 
+-   pScrn->AdjustFrame(scrnIndex, pScrn->frameX0, pScrn->frameY0, 0);
+-
+ #if SAVERESTORE_HWSTATE
+    RestoreHWOperatingState(pScrn);
+ #endif
+@@ -8185,10 +8168,9 @@
+ 
+    /* Since RandR (indirectly) uses SwitchMode(), we need to
+     * update our Xinerama info here, too, in case of resizing
++    * Call this unconditionally, as it also sets some fields in the SAREA
+     */
+-   if(pI830->MergedFB) {
+-      I830UpdateXineramaScreenInfo(pScrn);
+-   }
++   I830UpdateXineramaScreenInfo(pScrn);
+ 
+    return ret;
+ }
+@@ -8344,6 +8326,8 @@
+       pI830->CursorInfoRec = 0;
+    }
+ 
++   i830_reset_allocations(pScrn);
++
+    if (I830IsPrimary(pScrn)) {
+       xf86GARTCloseScreen(scrnIndex);
+ 
+@@ -8574,7 +8558,6 @@
+ 			"Requested display devices 0x%lx.\n", 
+ 		    (unsigned long) temp);
+ 
+-
+          /* If the BIOS doesn't flip between CRT, LFP and CRT+LFP we fake
+           * it here as it seems some just flip between CRT and LFP. Ugh!
+           *
+--- xf86-video-i810-1.6.5/src/i915_video.c.crestline	2006-08-09 16:36:54.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i915_video.c	2007-06-19 14:40:07.000000000 -0400
+@@ -60,7 +60,7 @@
+ 			 DrawablePtr pDraw)
+ {
+    I830Ptr pI830 = I830PTR(pScrn);
+-   CARD32 format, ms3, s2;
++   CARD32 format, ms3, s2, s5;
+    BoxPtr pbox;
+    int nbox, dxo, dyo;
+    Bool planar;
+@@ -125,7 +125,7 @@
+ 
+    /* draw rect -- just clipping */
+    OUT_RING(_3DSTATE_DRAW_RECT_CMD);
+-   OUT_RING(0x00000000);	/* flags */
++   OUT_RING(DRAW_DITHER_OFS_X(pDraw->x & 3)| DRAW_DITHER_OFS_Y(pDraw->y &3)); /* flags */
+    OUT_RING(0x00000000);	/* ymin, xmin */
+    OUT_RING((pScrn->virtualX - 1) |
+ 	    (pScrn->virtualY - 1) << 16); /* ymax, xmax */
+@@ -165,7 +165,10 @@
+    OUT_RING(s2);
+    OUT_RING((1 << S4_POINT_WIDTH_SHIFT) | S4_LINE_WIDTH_ONE |
+ 	    S4_CULLMODE_NONE | S4_VFMT_XY);
+-   OUT_RING(0x00000000); /* S5 - enable bits */
++   s5 = 0x0;
++   if (pI830->cpp == 2)
++      s5 |= S5_COLOR_DITHER_ENABLE;
++   OUT_RING(s5); /* S5 - enable bits */
+    OUT_RING((2 << S6_DEPTH_TEST_FUNC_SHIFT) |
+ 	    (2 << S6_CBUF_SRC_BLEND_FACT_SHIFT) |
+ 	    (1 << S6_CBUF_DST_BLEND_FACT_SHIFT) | S6_COLOR_WRITE_ENABLE |
+--- xf86-video-i810-1.6.5/src/i830_video.c.crestline	2007-06-19 14:40:07.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_video.c	2007-06-19 14:40:07.000000000 -0400
+@@ -129,15 +129,29 @@
+ static Atom xvBrightness, xvContrast, xvColorKey, xvPipe, xvDoubleBuffer;
+ static Atom xvGamma0, xvGamma1, xvGamma2, xvGamma3, xvGamma4, xvGamma5;
+ 
++/* Limits for the overlay/textured video source sizes.  The documented hardware
++ * limits are 2048x2048 or better for overlay and both of our textured video
++ * implementations.  However, we run into the bigrequests limit of (currently)
++ * 4MB, which even the planar format's 2048*2048*1.5 bytes is larger than.
++ * Conveniently, the HD resolution, even in packed format, takes
++ * (1920*1088*2) bytes, which is just shy of 4MB. Additionally, on the 830
++ * and 845, larger sizes resulted in the card hanging, so we keep the limits
++ * lower there.
++ *
++ * While the HD resolution is actually 1920x1080, we increase our advertised
++ * size to 1088 because some software wants to send an image aligned to
++ * 16-pixel boundaries.
++ */
++
+ #define IMAGE_MAX_WIDTH		1920
+-#define IMAGE_MAX_HEIGHT	1080
+-#define IMAGE_MAX_WIDTH_LEGACY	1024
+-#define IMAGE_MAX_HEIGHT_LEGACY	1080
++#define IMAGE_MAX_HEIGHT	1088
++#define IMAGE_MAX_WIDTH_LEGACY  1024
++#define IMAGE_MAX_HEIGHT_LEGACY 1088
+ 
+ /*
+  * Broadwater requires a bit of extra video memory for state information
+  */
+-#define BRW_LINEAR_EXTRA	(32*1024)
++#define BRW_LINEAR_EXTRA	(36*1024)
+ 
+ #if !VIDEO_DEBUG
+ #define ErrorF Edummy
+@@ -158,9 +172,9 @@
+ 
+ #define OVERLAY_UPDATE						\
+    do { 								\
+-      BEGIN_LP_RING(6);							\
+-      OUT_RING(MI_FLUSH | MI_WRITE_DIRTY_STATE);			\
+-      OUT_RING(MI_NOOP);						\
++      BEGIN_LP_RING(8)                                                  \
++      OUT_RING(MI_FLUSH | MI_WRITE_DIRTY_STATE);                        \
++      OUT_RING(MI_NOOP);                                                \
+       if (!*pI830->overlayOn) {						\
+          OUT_RING(MI_NOOP);						\
+ 	 OUT_RING(MI_NOOP);						\
+@@ -176,6 +190,8 @@
+          OUT_RING(pI830->OverlayMem->Start | OFC_UPDATE); 		\
+       else								\
+ 	 OUT_RING(pI830->OverlayMem->Physical | OFC_UPDATE);		\
++      OUT_RING(MI_WAIT_FOR_EVENT | MI_WAIT_FOR_OVERLAY_FLIP);           \
++      OUT_RING(MI_NOOP);                                                \
+       ADVANCE_LP_RING();						\
+       ErrorF("OVERLAY_UPDATE\n");					\
+    } while(0)
+@@ -184,18 +200,9 @@
+    do { 								\
+       if (*pI830->overlayOn) {						\
+ 	 int spin = 1000000;						\
+-	 BEGIN_LP_RING(12);						\
+-	 OUT_RING(MI_FLUSH | MI_WRITE_DIRTY_STATE);			\
+-	 OUT_RING(MI_NOOP);						\
+-	 OUT_RING(MI_WAIT_FOR_EVENT | MI_WAIT_FOR_OVERLAY_FLIP);	\
+-	 OUT_RING(MI_NOOP);						\
+-	 OUT_RING(MI_OVERLAY_FLIP | MI_OVERLAY_FLIP_CONTINUE);		\
+-         if (IS_I965G(pI830)) 					\
+-            OUT_RING(pI830->OverlayMem->Start | OFC_UPDATE); 		\
+-         else								\
+-	    OUT_RING(pI830->OverlayMem->Physical | OFC_UPDATE);		\
+-	 OUT_RING(MI_WAIT_FOR_EVENT | MI_WAIT_FOR_OVERLAY_FLIP);	\
+-	 OUT_RING(MI_NOOP);						\
++         BEGIN_LP_RING(6);                                              \
++         OUT_RING(MI_FLUSH | MI_WRITE_DIRTY_STATE);                     \
++         OUT_RING(MI_NOOP);                                             \
+ 	 OUT_RING(MI_OVERLAY_FLIP | MI_OVERLAY_FLIP_OFF);		\
+          if (IS_I965G(pI830)) 					\
+             OUT_RING(pI830->OverlayMem->Start | OFC_UPDATE); 		\
+@@ -688,8 +695,7 @@
+ 
+    adapt->pPortPrivates[0].ptr = (pointer) (pPriv);
+    adapt->nAttributes = NUM_ATTRIBUTES;
+-   if (pI830->Clone)
+-      adapt->nAttributes += CLONE_ATTRIBUTES;
++   adapt->nAttributes += CLONE_ATTRIBUTES;
+    if (IS_I9XX(pI830))
+       adapt->nAttributes += GAMMA_ATTRIBUTES; /* has gamma */
+    adapt->pAttributes = xnfalloc(sizeof(XF86AttributeRec) * adapt->nAttributes);
+@@ -697,10 +703,8 @@
+    att = adapt->pAttributes;
+    memcpy((char *)att, (char*)Attributes, sizeof(XF86AttributeRec)* NUM_ATTRIBUTES);
+    att+=NUM_ATTRIBUTES;
+-   if (pI830->Clone) {
+-      memcpy((char*)att, (char*)CloneAttributes, sizeof(XF86AttributeRec) * CLONE_ATTRIBUTES);
+-      att+=CLONE_ATTRIBUTES;
+-   }
++   memcpy((char*)att, (char*)CloneAttributes, sizeof(XF86AttributeRec) * CLONE_ATTRIBUTES);
++   att+=CLONE_ATTRIBUTES;
+    if (IS_I9XX(pI830)) {
+       memcpy((char*)att, (char*)GammaAttributes, sizeof(XF86AttributeRec) * GAMMA_ATTRIBUTES);
+       att+=GAMMA_ATTRIBUTES;
+@@ -759,8 +763,7 @@
+    xvDoubleBuffer = MAKE_ATOM("XV_DOUBLE_BUFFER");
+ 
+    /* Allow the pipe to be switched from pipe A to B when in clone mode */
+-   if (pI830->Clone)
+-     xvPipe = MAKE_ATOM("XV_PIPE");
++   xvPipe = MAKE_ATOM("XV_PIPE");
+    
+    if (IS_I9XX(pI830)) {
+      xvGamma0 = MAKE_ATOM("XV_GAMMA0");
+@@ -782,7 +785,6 @@
+ I830SetupImageVideoTextured(ScreenPtr pScreen)
+ {
+    XF86VideoAdaptorPtr adapt;
+-   XF86VideoEncodingPtr encoding;
+    XF86AttributePtr attrs;
+    I830PortPrivPtr portPrivs;
+    DevUnion *devUnions;
+@@ -796,15 +798,13 @@
+    adapt = xcalloc(1, sizeof(XF86VideoAdaptorRec));
+    portPrivs = xcalloc(nports, sizeof(I830PortPrivRec));
+    devUnions = xcalloc(nports, sizeof(DevUnion));
+-   encoding = xcalloc(1, sizeof(XF86VideoEncodingRec));
+    attrs = xcalloc(nAttributes, sizeof(XF86AttributeRec));
+    if (adapt == NULL || portPrivs == NULL || devUnions == NULL ||
+-       encoding == NULL || attrs == NULL)
++       attrs == NULL)
+    {
+       xfree(adapt);
+       xfree(portPrivs);
+       xfree(devUnions);
+-      xfree(encoding);
+       xfree(attrs);
+       return NULL;
+    }
+@@ -813,13 +813,7 @@
+    adapt->flags = 0;
+    adapt->name = "Intel(R) Textured Video";
+    adapt->nEncodings = 1;
+-   adapt->pEncodings = encoding;
+-   adapt->pEncodings[0].id = 0;
+-   adapt->pEncodings[0].name = "XV_IMAGE";
+-   adapt->pEncodings[0].width = 2048;
+-   adapt->pEncodings[0].height = 2048;
+-   adapt->pEncodings[0].rate.numerator = 1;
+-   adapt->pEncodings[0].rate.denominator = 1;
++   adapt->pEncodings = DummyEncoding;
+    adapt->nFormats = NUM_FORMATS;
+    adapt->pFormats = Formats;
+    adapt->nPorts = nports;
+@@ -892,9 +886,6 @@
+    I830PortPrivPtr pPriv = (I830PortPrivPtr) data;
+    I830Ptr pI830 = I830PTR(pScrn);
+ 
+-   I830OverlayRegPtr overlay =
+-	 (I830OverlayRegPtr) (pI830->FbBase + pI830->OverlayMem->Start);
+-
+    if (pPriv->textured)
+       return;
+ 
+@@ -905,11 +896,9 @@
+    if (shutdown) {
+       if (pPriv->videoStatus & CLIENT_VIDEO_ON) {
+ 
+-	 overlay->OCMD &= ~OVERLAY_ENABLE;
++         I830ResetVideo(pScrn);
+ 	 OVERLAY_UPDATE;
+-#if 1
+ 	 OVERLAY_OFF;
+-#endif
+ 
+          if (pI830->entityPrivate)
+             pI830->entityPrivate->XvInUse = -1;
+@@ -951,22 +940,16 @@
+       pPriv->brightness = value;
+       overlay->OCLRC0 = (pPriv->contrast << 18) | (pPriv->brightness & 0xff);
+       ErrorF("BRIGHTNESS\n");
+-      overlay->OCMD &= ~OVERLAY_ENABLE;
+       OVERLAY_UPDATE;
+-#if 1
+       OVERLAY_OFF;
+-#endif
+    } else if (attribute == xvContrast) {
+       if ((value < 0) || (value > 255))
+ 	 return BadValue;
+       pPriv->contrast = value;
+       overlay->OCLRC0 = (pPriv->contrast << 18) | (pPriv->brightness & 0xff);
+       ErrorF("CONTRAST\n");
+-      overlay->OCMD &= ~OVERLAY_ENABLE;
+       OVERLAY_UPDATE;
+-#if 1
+       OVERLAY_OFF;
+-#endif
+    } else if (pI830->Clone && attribute == xvPipe) {
+       if ((value < 0) || (value > 1))
+          return BadValue;
+@@ -980,11 +963,8 @@
+       else 
+          overlay->OCONFIG |= OVERLAY_PIPE_B;
+       ErrorF("PIPE CHANGE\n");
+-      overlay->OCMD &= ~OVERLAY_ENABLE;
+       OVERLAY_UPDATE;
+-#if 1
+       OVERLAY_OFF;
+-#endif
+    } else if (attribute == xvGamma0 && (IS_I9XX(pI830))) {
+       pPriv->gamma0 = value; 
+    } else if (attribute == xvGamma1 && (IS_I9XX(pI830))) {
+@@ -1011,11 +991,8 @@
+ 	 break;
+       }
+       ErrorF("COLORKEY\n");
+-      overlay->OCMD &= ~OVERLAY_ENABLE;
+       OVERLAY_UPDATE;
+-#if 1
+       OVERLAY_OFF;
+-#endif
+       REGION_EMPTY(pScrn->pScreen, &pPriv->clip);
+    } else if(attribute == xvDoubleBuffer) {
+       if ((value < 0) || (value > 1))
+@@ -1026,20 +1003,21 @@
+    } else
+       return BadMatch;
+ 
+-   /* We've already confirmed that the overlay is off, ready for updating */
++   /* Ensure that the overlay is off, ready for updating */
+    if ((attribute == xvGamma0 ||
+         attribute == xvGamma1 ||
+         attribute == xvGamma2 ||
+         attribute == xvGamma3 ||
+         attribute == xvGamma4 ||
+         attribute == xvGamma5) && (IS_I9XX(pI830))) {
++        CARD32 r = overlay->OCMD & OVERLAY_ENABLE;
+         ErrorF("GAMMA\n");
+         overlay->OCMD &= ~OVERLAY_ENABLE;
+         OVERLAY_UPDATE;
+-#if 1
+-        OVERLAY_OFF;
+-#endif
+ 	I830UpdateGamma(pScrn);
++
++        overlay->OCMD |= r;
++        OVERLAY_UPDATE;
+    }
+ 
+    return Success;
+@@ -1056,7 +1034,7 @@
+       *value = pPriv->brightness;
+    } else if (attribute == xvContrast) {
+       *value = pPriv->contrast;
+-   } else if (pI830->Clone && attribute == xvPipe) {
++   } else if (attribute == xvPipe) {
+       *value = pPriv->pipe;
+    } else if (attribute == xvGamma0 && (IS_I9XX(pI830))) {
+       *value = pPriv->gamma0;
+@@ -1687,8 +1665,11 @@
+       I830ResetVideo(pScrn);
+ 
+    /* Ensure overlay is turned on with OVERLAY_ENABLE at 0 */
+-   if (!*pI830->overlayOn)
++   if (!*pI830->overlayOn) {
++      ErrorF("TURNING ON OVERLAY BEFORE UPDATE\n");
++      I830ResetVideo(pScrn);
+       OVERLAY_UPDATE;
++   }
+ 
+    /* Fix up the dstBox if outside the visible screen */
+    {
+@@ -3203,18 +3184,16 @@
+    ErrorF("I830QueryImageAttributes: w is %d, h is %d\n", *w, *h);
+ #endif
+ 
+-   if (!textured) {
+-      if (IS_845G(pI830) || IS_I830(pI830)) {
+-	 if (*w > IMAGE_MAX_WIDTH_LEGACY)
+-	    *w = IMAGE_MAX_WIDTH_LEGACY;
+-	 if (*h > IMAGE_MAX_HEIGHT_LEGACY)
+-	    *h = IMAGE_MAX_HEIGHT_LEGACY;
+-      } else {
+-	 if (*w > IMAGE_MAX_WIDTH)
+-	    *w = IMAGE_MAX_WIDTH;
+-	 if (*h > IMAGE_MAX_HEIGHT)
+-	    *h = IMAGE_MAX_HEIGHT;
+-      }
++   if (IS_845G(pI830) || IS_I830(pI830)) {
++      if (*w > IMAGE_MAX_WIDTH_LEGACY)
++        *w = IMAGE_MAX_WIDTH_LEGACY;
++      if (*h > IMAGE_MAX_HEIGHT_LEGACY)
++        *h = IMAGE_MAX_HEIGHT_LEGACY;
++   } else {
++      if (*w > IMAGE_MAX_WIDTH)
++        *w = IMAGE_MAX_WIDTH;
++      if (*h > IMAGE_MAX_HEIGHT)
++        *h = IMAGE_MAX_HEIGHT;
+    }
+ 
+    *w = (*w + 1) & ~1;
+@@ -3293,8 +3272,6 @@
+    ScrnInfoPtr pScrn = xf86Screens[i];
+    I830Ptr pI830 = I830PTR(pScrn);
+    I830PortPrivPtr pPriv = GET_PORT_PRIVATE(pScrn);
+-   I830OverlayRegPtr overlay =
+-	 (I830OverlayRegPtr) (pI830->FbBase + pI830->OverlayMem->Start);
+ 
+    pScreen->BlockHandler = pI830->BlockHandler;
+ 
+@@ -3312,11 +3289,9 @@
+ 	 if (pPriv->offTime < now) {
+ 	    /* Turn off the overlay */
+ 	    ErrorF("BLOCKHANDLER\n");
+-	    overlay->OCMD &= ~OVERLAY_ENABLE;
++            I830ResetVideo(pScrn);
+             OVERLAY_UPDATE;
+-#if 1
+             OVERLAY_OFF;
+-#endif
+ 
+ 	    pPriv->videoStatus = FREE_TIMER;
+ 	    pPriv->freeTime = now + FREE_DELAY;
+@@ -3425,15 +3400,10 @@
+    if (pPriv->isOn) {
+       I830Ptr pI830 = I830PTR(pScrn);
+ 
+-      I830OverlayRegPtr overlay =
+-	    (I830OverlayRegPtr) (pI830->FbBase + pI830->OverlayMem->Start);
+-
+       ErrorF("StopSurface\n");
+-      overlay->OCMD &= ~OVERLAY_ENABLE;
++      I830ResetVideo(pScrn);
+       OVERLAY_UPDATE;
+-#if 1
+       OVERLAY_OFF;
+-#endif
+ 
+       if (pI830->entityPrivate)
+          pI830->entityPrivate->XvInUse = -1;
+@@ -3596,7 +3566,7 @@
+       offscreenImages[0].max_height = IMAGE_MAX_HEIGHT_LEGACY;
+    } else {
+       offscreenImages[0].max_width = IMAGE_MAX_WIDTH;
+-      offscreenImages[0].max_height = IMAGE_MAX_HEIGHT; 
++      offscreenImages[0].max_height = IMAGE_MAX_HEIGHT;
+    }
+    offscreenImages[0].num_attributes = 1;
+    offscreenImages[0].attributes = Attributes;
+--- xf86-video-i810-1.6.5/src/i830_dri.c.crestline	2006-08-09 18:46:10.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i830_dri.c	2007-06-19 14:40:07.000000000 -0400
+@@ -835,29 +835,6 @@
+       I830SetParam(pScrn, I830_SETPARAM_USE_MI_BATCHBUFFER_START, 1 );
+    }
+ 
+-   /* Okay now initialize the dma engine */
+-   {
+-      pI830DRI->irq = drmGetInterruptFromBusID(pI830->drmSubFD,
+-					       ((pciConfigPtr) pI830->
+-						PciInfo->thisCard)->busnum,
+-					       ((pciConfigPtr) pI830->
+-						PciInfo->thisCard)->devnum,
+-					       ((pciConfigPtr) pI830->
+-						PciInfo->thisCard)->funcnum);
+-
+-      if (drmCtlInstHandler(pI830->drmSubFD, pI830DRI->irq)) {
+-	 xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+-		    "[drm] failure adding irq handler\n");
+-	 pI830DRI->irq = 0;
+-	 DRICloseScreen(pScreen);
+-	 return FALSE;
+-      }
+-      else
+-	 xf86DrvMsg(pScrn->scrnIndex, X_INFO,
+-		    "[drm] dma control initialized, using IRQ %d\n",
+-		    pI830DRI->irq);
+-   }
+-
+    pI830DRI = (I830DRIPtr) pI830->pDRIInfo->devPrivate;
+    pI830DRI->deviceID = pI830->PciInfo->chipType;
+    pI830DRI->width = pScrn->virtualX;
+@@ -981,8 +958,34 @@
+ #endif
+       pI830->allowPageFlip = 0;
+ 
++   if (!DRIFinishScreenInit(pScreen))
++      return FALSE;
++
++   /* Okay now initialize the dma engine */
++   {
++      I830DRIPtr pI830DRI = (I830DRIPtr) pI830->pDRIInfo->devPrivate;
++
++      pI830DRI->irq = drmGetInterruptFromBusID(pI830->drmSubFD,
++                                              ((pciConfigPtr) pI830->
++                                               PciInfo->thisCard)->busnum,
++                                              ((pciConfigPtr) pI830->
++                                               PciInfo->thisCard)->devnum,
++                                              ((pciConfigPtr) pI830->
++                                               PciInfo->thisCard)->funcnum);
+ 
+-   return DRIFinishScreenInit(pScreen);
++      if (drmCtlInstHandler(pI830->drmSubFD, pI830DRI->irq)) {
++        xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
++                   "[drm] failure adding irq handler\n");
++        pI830DRI->irq = 0;
++        DRICloseScreen(pScreen);
++        return FALSE;
++      }
++      else
++        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
++                   "[drm] dma control initialized, using IRQ %d\n",
++                   pI830DRI->irq);
++        return TRUE;
++   }
+ }
+ 
+ void
+@@ -1485,10 +1488,13 @@
+ 
+     if (pI830->directRenderingEnabled && pI830->drmMinor >= 5) {
+ 	if (on) {
+-	    if (pI830->planeEnabled[1])
+-		pipe.pipe = DRM_I830_VBLANK_PIPE_B;
+-	    else
+-		pipe.pipe = DRM_I830_VBLANK_PIPE_A;
++            if (pI830->planeEnabled[1]) {
++                if (pI830->drmMinor >=6)
++                    pipe.pipe = DRM_I830_VBLANK_PIPE_A | DRM_I830_VBLANK_PIPE_B;
++                else
++		    pipe.pipe = DRM_I830_VBLANK_PIPE_B;
++            } else
++                pipe.pipe = DRM_I830_VBLANK_PIPE_A;
+ 	} else {
+ 	    pipe.pipe = 0;
+ 	}
+--- xf86-video-i810-1.6.5/src/i810_driver.c.crestline	2007-06-19 14:40:07.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i810_driver.c	2007-06-19 14:40:07.000000000 -0400
+@@ -140,10 +140,13 @@
+    {PCI_CHIP_I915_GM,		"915GM"},
+    {PCI_CHIP_I945_G,		"945G"},
+    {PCI_CHIP_I945_GM,		"945GM"},
++   {PCI_CHIP_I945_GME,		"945GME"},
+    {PCI_CHIP_I965_G,		"965G"},
+    {PCI_CHIP_I965_G_1,		"965G"},
+    {PCI_CHIP_I965_Q,		"965Q"},
+    {PCI_CHIP_I946_GZ,		"946GZ"},
++   {PCI_CHIP_I965_GM,		"965GM"},
++   {PCI_CHIP_I965_GME,		"965GME/GLE"},
+    {-1,				NULL}
+ };
+ 
+@@ -163,10 +166,13 @@
+    {PCI_CHIP_I915_GM,		PCI_CHIP_I915_GM,	RES_SHARED_VGA},
+    {PCI_CHIP_I945_G,		PCI_CHIP_I945_G,	RES_SHARED_VGA},
+    {PCI_CHIP_I945_GM,		PCI_CHIP_I945_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_I945_GME,		PCI_CHIP_I945_GME,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_G,		PCI_CHIP_I965_G,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_G_1,		PCI_CHIP_I965_G_1,	RES_SHARED_VGA},
+    {PCI_CHIP_I965_Q,		PCI_CHIP_I965_Q,	RES_SHARED_VGA},
+    {PCI_CHIP_I946_GZ,		PCI_CHIP_I946_GZ,	RES_SHARED_VGA},
++   {PCI_CHIP_I965_GM,		PCI_CHIP_I965_GM,	RES_SHARED_VGA},
++   {PCI_CHIP_I965_GME,		PCI_CHIP_I965_GME,	RES_SHARED_VGA},
+    {-1,				-1, RES_UNDEFINED }
+ };
+ 
+@@ -585,10 +591,13 @@
+ 	    case PCI_CHIP_I915_GM:
+ 	    case PCI_CHIP_I945_G:
+ 	    case PCI_CHIP_I945_GM:
++	    case PCI_CHIP_I945_GME:
+ 	    case PCI_CHIP_I965_G:
+ 	    case PCI_CHIP_I965_G_1:
+ 	    case PCI_CHIP_I965_Q:
+ 	    case PCI_CHIP_I946_GZ:
++	    case PCI_CHIP_I965_GM:
++	    case PCI_CHIP_I965_GME:
+     	       xf86SetEntitySharable(usedChips[i]);
+ 
+     	       /* Allocate an entity private if necessary */		
+@@ -1186,14 +1195,13 @@
+    long i;
+ 
+    for (i = 2; i < pI810->FbMapSize; i <<= 1) ;
+-   pI810->FbMapSize = i;
+ 
+    if (!I810MapMMIO(pScrn))
+       return FALSE;
+ 
+    pI810->FbBase = xf86MapPciMem(pScrn->scrnIndex, VIDMEM_FRAMEBUFFER,
+ 				 pI810->PciTag,
+-				 pI810->LinearAddr, pI810->FbMapSize);
++                                 pI810->LinearAddr, i);
+    if (!pI810->FbBase)
+       return FALSE;
+ 
+--- xf86-video-i810-1.6.5/src/i810_dri.c.crestline	2006-07-26 00:08:05.000000000 -0400
++++ xf86-video-i810-1.6.5/src/i810_dri.c	2007-06-19 14:40:07.000000000 -0400
+@@ -171,9 +171,9 @@
+    ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+    I810Ptr pI810 = I810PTR(pScrn);
+    int numConfigs = 0;
+-   __GLXvisualConfig *pConfigs = 0;
+-   I810ConfigPrivPtr pI810Configs = 0;
+-   I810ConfigPrivPtr *pI810ConfigPtrs = 0;
++   __GLXvisualConfig *pConfigs = NULL;
++   I810ConfigPrivPtr pI810Configs = NULL;
++   I810ConfigPrivPtr *pI810ConfigPtrs = NULL;
+    int accum, stencil, db, depth;
+    int i;
+ 
+@@ -222,6 +222,7 @@
+ 	       pConfigs[i].redSize = 5;
+ 	       pConfigs[i].greenSize = 6;
+ 	       pConfigs[i].blueSize = 5;
++	       pConfigs[i].alphaSize = 0;
+ 	       pConfigs[i].redMask = 0x0000F800;
+ 	       pConfigs[i].greenMask = 0x000007E0;
+ 	       pConfigs[i].blueMask = 0x0000001F;
+@@ -385,7 +386,7 @@
+ 
+    if (!(pI810DRI = (I810DRIPtr) xcalloc(sizeof(I810DRIRec), 1))) {
+       DRIDestroyInfoRec(pI810->pDRIInfo);
+-      pI810->pDRIInfo = 0;
++      pI810->pDRIInfo = NULL;
+       return FALSE;
+    }
+    pDRIInfo->devPrivate = pI810DRI;
+@@ -413,9 +414,9 @@
+       xf86DrvMsg(pScreen->myNum, X_ERROR,
+ 		 "[dri] DRIScreenInit failed.  Disabling DRI.\n");
+       xfree(pDRIInfo->devPrivate);
+-      pDRIInfo->devPrivate = 0;
++      pDRIInfo->devPrivate = NULL;
+       DRIDestroyInfoRec(pI810->pDRIInfo);
+-      pI810->pDRIInfo = 0;
++      pI810->pDRIInfo = NULL;
+       return FALSE;
+    }
+ 
+@@ -1070,10 +1071,10 @@
+    if (pI810->pDRIInfo) {
+       if (pI810->pDRIInfo->devPrivate) {
+ 	 xfree(pI810->pDRIInfo->devPrivate);
+-	 pI810->pDRIInfo->devPrivate = 0;
++	 pI810->pDRIInfo->devPrivate = NULL;
+       }
+       DRIDestroyInfoRec(pI810->pDRIInfo);
+-      pI810->pDRIInfo = 0;
++      pI810->pDRIInfo = NULL;
+    }
+    if (pI810->pVisualConfigs)
+       xfree(pI810->pVisualConfigs);
+@@ -1173,7 +1174,9 @@
+       pbox++;
+    }
+    I810SelectBuffer(pScrn, I810_SELECT_FRONT);
+-   pI810->AccelInfoRec->NeedToSync = TRUE;
++
++   if (pI810->AccelInfoRec)
++   	pI810->AccelInfoRec->NeedToSync = TRUE;
+ }
+ 
+ /* This routine is a modified form of XAADoBitBlt with the calls to
+@@ -1200,9 +1203,9 @@
+    BoxPtr pbox = REGION_RECTS(prgnSrc);
+    int nbox = REGION_NUM_RECTS(prgnSrc);
+ 
+-   BoxPtr pboxNew1 = 0;
+-   BoxPtr pboxNew2 = 0;
+-   DDXPointPtr pptNew1 = 0;
++   BoxPtr pboxNew1 = NULL;
++   BoxPtr pboxNew2 = NULL;
++   DDXPointPtr pptNew1 = NULL;
+    DDXPointPtr pptSrc = &ptOldOrg;
+ 
+    int dx = pParent->drawable.x - ptOldOrg.x;
+@@ -1332,7 +1335,8 @@
+       DEALLOCATE_LOCAL(pboxNew1);
+    }
+ 
+-   pI810->AccelInfoRec->NeedToSync = TRUE;
++   if (pI810->AccelInfoRec)
++	pI810->AccelInfoRec->NeedToSync = TRUE;
+ }
+ 
+ 
+--- xf86-video-i810-1.6.5/src/xvmc/Makefile.am.crestline	2006-04-08 19:49:22.000000000 -0400
++++ xf86-video-i810-1.6.5/src/xvmc/Makefile.am	2007-06-19 14:40:07.000000000 -0400
+@@ -4,5 +4,5 @@
+ 			 I810XvMC.h
+ 
+ libI810XvMC_la_CFLAGS = @XORG_CFLAGS@ @DRI_CFLAGS@ -I$(top_srcdir)/src -DTRUE=1 -DFALSE=0
+-libI810XvMC_la_LDFLAGS = -version-number 1:0:0
+-endif
+\ No newline at end of file
++libI810XvMC_la_LDFLAGS = @DRI_LIBS@ -version-number 1:0:0
++endif
+--- xf86-video-i810-1.6.5/man/i810.man.crestline	2006-08-08 19:23:59.000000000 -0400
++++ xf86-video-i810-1.6.5/man/i810.man	2007-06-19 14:40:07.000000000 -0400
+@@ -49,7 +49,7 @@
+ entry in the config file
+ .B "Device"
+ section.  It may be set to any reasonable value up to 64MB for older
+-chipsets or 128MB for newer chipets.  It is advisable to check the
++chipsets or 128MB for newer chipsets.  It is advisable to check the
+ __xservername__
+ log file to check if any features have been disabled because of insufficient
+ video memory.  In particular, DRI support or tiling mode may be disabled
+@@ -84,9 +84,12 @@
+ 2D acceleration and video.  Decreasing this amount leaves more for 3D
+ textures.  Increasing it can improve 2D performance at the expense of
+ 3D performance.
++.TP
++This option only takes effect when XAA acceleration is enabled.
++.TP
+ Default: depends on the resolution, depth, and available video memory.  The
+-driver attempts to allocate at least enough to hold two DVD-sized YUV buffers
+-by default.  The default used for a specific configuration can be found
++driver attempts to allocate space for at 3 screenfuls of pixmaps plus an
++HD-sized XV video.  The default used for a specific configuration can be found
+ by examining the __xservername__ log file.
+ .TP
+ .BI "Option \*qDRI\*q \*q" boolean \*q
+@@ -201,7 +204,7 @@
+ .BI "Option \*qLinearAlloc\*q \*q" integer \*q
+ Allows more memory for the offscreen allocator. This usually helps in
+ situations where HDTV movies are required to play but not enough offscreen
+-memory is usually available. Set this to 6144 for upto 1920x1080 HDTV support.
++memory is usually available. Set this to 8160 for upto 1920x1080 HDTV support.
+ Default 0KB (off).
+ 
+ .SH "SEE ALSO"

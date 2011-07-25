@@ -1,0 +1,156 @@
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.restore-hw-state xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.restore-hw-state	2009-02-11 18:36:59.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2009-02-11 18:57:09.000000000 +0000
+@@ -1956,6 +1956,9 @@ SaveHWState(ScrnInfoPtr pScrn)
+    }
+ 
+    /* Save video mode information for native mode-setting. */
++   if (!IS_G4X(pI830))
++       pI830->saveDSPARB = INREG(DSPARB);
++
+    pI830->saveDSPACNTR = INREG(DSPACNTR);
+    pI830->savePIPEACONF = INREG(PIPEACONF);
+    pI830->savePIPEASRC = INREG(PIPEASRC);
+@@ -2014,6 +2017,13 @@ SaveHWState(ScrnInfoPtr pScrn)
+    pI830->saveVCLK_POST_DIV = INREG(VCLK_POST_DIV);
+    pI830->saveVGACNTRL = INREG(VGACNTRL);
+ 
++   pI830->saveCURSOR_A_CONTROL = INREG(CURSOR_A_CONTROL);
++   pI830->saveCURSOR_A_POSITION = INREG(CURSOR_A_POSITION);
++   pI830->saveCURSOR_A_BASE = INREG(CURSOR_A_BASE);
++   pI830->saveCURSOR_B_CONTROL = INREG(CURSOR_B_CONTROL);
++   pI830->saveCURSOR_B_POSITION = INREG(CURSOR_B_POSITION);
++   pI830->saveCURSOR_B_BASE = INREG(CURSOR_B_BASE);
++
+    for(i = 0; i < 7; i++) {
+       pI830->saveSWF[i] = INREG(SWF0 + (i << 2));
+       pI830->saveSWF[i+7] = INREG(SWF00 + (i << 2));
+@@ -2021,6 +2031,13 @@ SaveHWState(ScrnInfoPtr pScrn)
+    pI830->saveSWF[14] = INREG(SWF30);
+    pI830->saveSWF[15] = INREG(SWF31);
+    pI830->saveSWF[16] = INREG(SWF32);
++   pI830->saveDSPCLK_GATE_D = INREG(DSPCLK_GATE_D);
++   pI830->saveRENCLK_GATE_D1 = INREG(RENCLK_GATE_D1);
++
++   if (IS_I965G(pI830)) {
++      pI830->saveRENCLK_GATE_D2 = INREG(RENCLK_GATE_D2);
++      pI830->saveRAMCLK_GATE_D = INREG(RAMCLK_GATE_D);
++   }
+ 
+    if (IS_MOBILE(pI830) && !IS_I830(pI830))
+       pI830->saveLVDS = INREG(LVDS);
+@@ -2078,6 +2095,16 @@ RestoreHWState(ScrnInfoPtr pScrn)
+ 
+    if (!IS_I830(pI830) && !IS_845G(pI830))
+      OUTREG(PFIT_CONTROL, pI830->savePFIT_CONTROL);
++   if (!IS_G4X(pI830))
++       OUTREG(DSPARB, pI830->saveDSPARB);
++
++   OUTREG(DSPCLK_GATE_D, pI830->saveDSPCLK_GATE_D);
++   OUTREG(RENCLK_GATE_D1, pI830->saveRENCLK_GATE_D1);
++
++   if (IS_I965G(pI830)) {
++      OUTREG(RENCLK_GATE_D2, pI830->saveRENCLK_GATE_D2);
++      OUTREG(RAMCLK_GATE_D, pI830->saveRAMCLK_GATE_D);
++   }
+ 
+    /*
+     * Pipe regs
+@@ -2098,12 +2125,15 @@ RestoreHWState(ScrnInfoPtr pScrn)
+    /* If the pipe A PLL is active, we can restore the pipe & plane config */
+    if (pI830->saveDPLL_A & DPLL_VCO_ENABLE)
+    {
++      OUTREG(FPA0, pI830->saveFPA0);
+       OUTREG(DPLL_A, pI830->saveDPLL_A & ~DPLL_VCO_ENABLE);
++      POSTING_READ(DPLL_A);
+       usleep(150);
+    }
+    OUTREG(FPA0, pI830->saveFPA0);
+    OUTREG(FPA1, pI830->saveFPA1);
+    OUTREG(DPLL_A, pI830->saveDPLL_A);
++   POSTING_READ(DPLL_A);
+    i830_dpll_settle();
+    if (IS_I965G(pI830))
+       OUTREG(DPLL_A_MD, pI830->saveDPLL_A_MD);
+@@ -2159,12 +2189,15 @@ RestoreHWState(ScrnInfoPtr pScrn)
+       /* If the pipe B PLL is active, we can restore the pipe & plane config */
+       if (pI830->saveDPLL_B & DPLL_VCO_ENABLE)
+       {
++	 OUTREG(FPB0, pI830->saveFPB0);
+ 	 OUTREG(DPLL_B, pI830->saveDPLL_B & ~DPLL_VCO_ENABLE);
++	 POSTING_READ(DPLL_B);
+ 	 usleep(150);
+       }
+       OUTREG(FPB0, pI830->saveFPB0);
+       OUTREG(FPB1, pI830->saveFPB1);
+       OUTREG(DPLL_B, pI830->saveDPLL_B);
++      POSTING_READ(DPLL_B);
+       i830_dpll_settle();
+       if (IS_I965G(pI830))
+ 	 OUTREG(DPLL_B_MD, pI830->saveDPLL_B_MD);
+@@ -2215,6 +2248,20 @@ RestoreHWState(ScrnInfoPtr pScrn)
+ 
+    OUTREG(VGACNTRL, pI830->saveVGACNTRL);
+ 
++   /*
++    * Restore cursors
++    * Even though the X cursor is hidden before we restore the hw state,
++    * we probably only disabled one cursor plane.  If we're going from
++    * e.g. plane b to plane a here in RestoreHWState, we need to restore
++    * both cursor plane settings.
++    */
++   OUTREG(CURSOR_A_POSITION, pI830->saveCURSOR_A_POSITION);
++   OUTREG(CURSOR_A_BASE, pI830->saveCURSOR_A_BASE);
++   OUTREG(CURSOR_A_CONTROL, pI830->saveCURSOR_A_CONTROL);
++   OUTREG(CURSOR_B_POSITION, pI830->saveCURSOR_B_POSITION);
++   OUTREG(CURSOR_B_BASE, pI830->saveCURSOR_B_BASE);
++   OUTREG(CURSOR_B_CONTROL, pI830->saveCURSOR_B_CONTROL);
++
+    /* Restore outputs */
+    for (i = 0; i < xf86_config->num_output; i++) {
+       xf86OutputPtr   output = xf86_config->output[i];
+@@ -2241,6 +2288,9 @@ RestoreHWState(ScrnInfoPtr pScrn)
+        OUTREG(FBC_CONTROL2, pI830->saveFBC_CONTROL2);
+        OUTREG(FBC_CONTROL, pI830->saveFBC_CONTROL);
+    }
++   /* Clear any FIFO underrun status that may have occurred normally */
++   OUTREG(PIPEASTAT, INREG(PIPEASTAT) | FIFO_UNDERRUN);
++   OUTREG(PIPEBSTAT, INREG(PIPEBSTAT) | FIFO_UNDERRUN);
+ 
+    vgaHWRestore(pScrn, vgaReg, VGA_SR_FONTS);
+    vgaHWLock(hwp);
+diff -up xf86-video-intel-2.2.1/src/i830.h.restore-hw-state xf86-video-intel-2.2.1/src/i830.h
+--- xf86-video-intel-2.2.1/src/i830.h.restore-hw-state	2009-02-11 18:39:17.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830.h	2009-02-11 18:42:13.000000000 +0000
+@@ -554,6 +554,7 @@ typedef struct _I830Rec {
+ 
+    enum backlight_control backlight_control_method;
+ 
++   CARD32 saveDSPARB;
+    CARD32 saveDSPACNTR;
+    CARD32 saveDSPBCNTR;
+    CARD32 savePIPEACONF;
+@@ -598,6 +599,12 @@ typedef struct _I830Rec {
+    CARD32 saveVCLK_DIVISOR_VGA1;
+    CARD32 saveVCLK_POST_DIV;
+    CARD32 saveVGACNTRL;
++   CARD32 saveCURSOR_A_CONTROL;
++   CARD32 saveCURSOR_A_BASE;
++   CARD32 saveCURSOR_A_POSITION;
++   CARD32 saveCURSOR_B_CONTROL;
++   CARD32 saveCURSOR_B_BASE;
++   CARD32 saveCURSOR_B_POSITION;
+    CARD32 saveADPA;
+    CARD32 saveLVDS;
+    CARD32 saveDVOA;
+@@ -618,6 +625,10 @@ typedef struct _I830Rec {
+    CARD32 saveFBC_CONTROL2;
+    CARD32 saveFBC_CONTROL;
+    CARD32 saveFBC_FENCE_OFF;
++   CARD32 saveRENCLK_GATE_D1;
++   CARD32 saveRENCLK_GATE_D2;
++   CARD32 saveDSPCLK_GATE_D;
++   CARD32 saveRAMCLK_GATE_D;
+ 
+    enum last_3d *last_3d;
+ 

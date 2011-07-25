@@ -1,0 +1,176 @@
+diff -up xf86-video-intel-2.2.1/src/common.h.hdmi-output xf86-video-intel-2.2.1/src/common.h
+--- xf86-video-intel-2.2.1/src/common.h.hdmi-output	2009-02-11 10:09:59.000000000 +0000
++++ xf86-video-intel-2.2.1/src/common.h	2009-02-11 10:27:09.000000000 +0000
+@@ -468,6 +468,7 @@ extern int I810_DEBUG;
+ #define HWS_NEED_GFX(pI810) (IS_G33CLASS(pI810) || IS_GM45(pI810) || IS_G4X(pI810))
+ /* chipsets require status page in non stolen memory */
+ #define HWS_NEED_NONSTOLEN(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
++#define SUPPORTS_INTEGRATED_HDMI(pI810) (IS_GM45(pI810) || IS_G4X(pI810))
+ 
+ #define GTT_PAGE_SIZE			KB(4)
+ #define ROUND_TO(x, y)			(((x) + (y) - 1) / (y) * (y))
+diff -up xf86-video-intel-2.2.1/src/i830_driver.c.hdmi-output xf86-video-intel-2.2.1/src/i830_driver.c
+--- xf86-video-intel-2.2.1/src/i830_driver.c.hdmi-output	2009-02-11 10:09:59.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830_driver.c	2009-02-11 10:15:36.000000000 +0000
+@@ -916,17 +916,23 @@ I830SetupOutputs(ScrnInfoPtr pScrn)
+       i830_lvds_init(pScrn);
+ 
+    if (IS_I9XX(pI830)) {
+-#if 1
+-      i830_sdvo_init(pScrn, SDVOB);
+-      i830_sdvo_init(pScrn, SDVOC);
+-#else
+-      i830_hdmi_init(pScrn, SDVOB);
+-      i830_hdmi_init(pScrn, SDVOC);
+-#endif
++      if (INREG(SDVOB) & SDVO_DETECTED) {
++	 Bool found = i830_sdvo_init(pScrn, SDVOB);
++
++	 if (!found && SUPPORTS_INTEGRATED_HDMI(pI830))
++	    i830_hdmi_init(pScrn, SDVOB);
++      }
++
++      if (INREG(SDVOC) & SDVO_DETECTED) {
++	 Bool found = i830_sdvo_init(pScrn, SDVOC);
++
++	 if (!found && SUPPORTS_INTEGRATED_HDMI(pI830))
++	    i830_hdmi_init(pScrn, SDVOC);
++      }
+    } else {
+       i830_dvo_init(pScrn);
+    }
+-   if (IS_I9XX(pI830) && !IS_I915G(pI830))
++   if (IS_I9XX(pI830) && IS_MOBILE(pI830))
+       i830_tv_init(pScrn);
+    
+    for (o = 0; o < config->num_output; o++)
+diff -up xf86-video-intel-2.2.1/src/i830_hdmi.c.hdmi-output xf86-video-intel-2.2.1/src/i830_hdmi.c
+--- xf86-video-intel-2.2.1/src/i830_hdmi.c.hdmi-output	2009-02-11 10:09:59.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830_hdmi.c	2009-02-11 10:15:36.000000000 +0000
+@@ -139,6 +139,8 @@ i830_hdmi_detect(xf86OutputPtr output)
+     struct i830_hdmi_priv *dev_priv = intel_output->dev_priv;
+     I830Ptr pI830 = I830PTR(pScrn);
+     uint32_t temp, bit;
++    xf86OutputStatus status;
++    xf86MonPtr edid_mon;
+ 
+     /* For G4X, PEG_BAND_GAP_DATA 3:0 must first be written 0xd.
+      * Failure to do so will result in spurious interrupts being
+@@ -171,9 +173,15 @@ i830_hdmi_detect(xf86OutputPtr output)
+     }
+ 
+     if ((INREG(PORT_HOTPLUG_STAT) & bit) != 0)
+-	return XF86OutputStatusConnected;
++	status = XF86OutputStatusConnected;
+     else
+ 	return XF86OutputStatusDisconnected;
++
++    edid_mon = xf86OutputGetEDID (output, intel_output->pDDCBus);
++    if (!edid_mon || !DIGITAL(edid_mon->features.input_type))
++	status = XF86OutputStatusDisconnected;
++    xfree(edid_mon);
++    return status;
+ }
+ 
+ static void
+diff -up xf86-video-intel-2.2.1/src/i830_sdvo.c.hdmi-output xf86-video-intel-2.2.1/src/i830_sdvo.c
+--- xf86-video-intel-2.2.1/src/i830_sdvo.c.hdmi-output	2009-02-11 10:09:59.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830_sdvo.c	2009-02-11 10:16:22.000000000 +0000
+@@ -1158,7 +1158,7 @@ static const xf86OutputFuncsRec i830_sdv
+     .destroy = i830_sdvo_destroy
+ };
+ 
+-void
++Bool
+ i830_sdvo_init(ScrnInfoPtr pScrn, int output_device)
+ {
+     xf86OutputPtr	    output;
+@@ -1173,13 +1173,13 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+ 
+     output = xf86OutputCreate (pScrn, &i830_sdvo_output_funcs,NULL);
+     if (!output)
+-	return;
++	return FALSE;
+     intel_output = xnfcalloc (sizeof (I830OutputPrivateRec) +
+ 			      sizeof (struct i830_sdvo_priv), 1);
+     if (!intel_output)
+     {
+ 	xf86OutputDestroy (output);
+-	return;
++	return FALSE;
+     }
+     output->driver_private = intel_output;
+     output->interlaceAllowed = FALSE;
+@@ -1201,7 +1201,7 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+     if (i2cbus == NULL)
+     {
+ 	xf86OutputDestroy (output);
+-	return;
++	return FALSE;
+     }
+ 
+     if (output_device == SDVOB) {
+@@ -1223,7 +1223,7 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+ 		   "Failed to initialize %s I2C device\n",
+ 		   SDVO_NAME(dev_priv));
+ 	xf86OutputDestroy (output);
+-	return;
++	return FALSE;
+     }
+ 
+     intel_output->pI2CBus = i2cbus;
+@@ -1236,7 +1236,7 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+ 		       "No SDVO device found on SDVO%c\n",
+ 		       output_device == SDVOB ? 'B' : 'C');
+ 	    xf86OutputDestroy (output);
+-	    return;
++	    return FALSE;
+ 	}
+     }
+ 
+@@ -1249,7 +1249,7 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+     if (ddcbus == NULL) 
+     {
+ 	xf86OutputDestroy (output);
+-	return;
++	return FALSE;
+     }
+     if (output_device == SDVOB)
+         ddcbus->BusName = "SDVOB DDC Bus";
+@@ -1266,7 +1266,7 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+     if (!xf86I2CBusInit(ddcbus)) 
+     {
+ 	xf86OutputDestroy (output);
+-	return;
++	return FALSE;
+     }
+ 
+     intel_output->pI2CBus = i2cbus;
+@@ -1316,7 +1316,7 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+     if (!xf86OutputRename (output, name))
+     {
+ 	xf86OutputDestroy (output);
+-	return;
++	return FALSE;
+     }
+ 	
+     
+@@ -1340,4 +1340,6 @@ i830_sdvo_init(ScrnInfoPtr pScrn, int ou
+ 	       (dev_priv->caps.sdvo_inputs_mask & 0x2) ? 'Y' : 'N',
+ 	       dev_priv->caps.output_flags & (SDVO_OUTPUT_RGB0 | SDVO_OUTPUT_TMDS0) ? 'Y' : 'N',
+ 	       dev_priv->caps.output_flags & (SDVO_OUTPUT_RGB1 | SDVO_OUTPUT_TMDS1) ? 'Y' : 'N');
++
++    return TRUE;
+ }
+diff -up xf86-video-intel-2.2.1/src/i830_sdvo.h.hdmi-output xf86-video-intel-2.2.1/src/i830_sdvo.h
+--- xf86-video-intel-2.2.1/src/i830_sdvo.h.hdmi-output	2008-02-20 21:41:25.000000000 +0000
++++ xf86-video-intel-2.2.1/src/i830_sdvo.h	2009-02-11 10:15:36.000000000 +0000
+@@ -25,7 +25,7 @@
+  *
+  */
+ 
+-void
++Bool
+ i830_sdvo_init(ScrnInfoPtr pScrn, int output_device);
+ 
+ int
